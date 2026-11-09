@@ -226,7 +226,7 @@ test('compareHead compares heads/<base>...<sha> and reports files and merge base
   };
   const r = await util.compareHead({ github, owner: 'o', repo: 'r', baseRef: 'main', headSha: 'h' });
   assert.equal(params.basehead, 'heads/main...h');
-  assert.deepEqual(r, { names: ['a'], files: [{ filename: 'a' }], mergeBase: 'mb', totalCommits: 2 });
+  assert.deepEqual(r, { names: ['a'], files: [{ filename: 'a' }], mergeBase: 'mb', totalCommits: 2, behindBy: 0 });
 });
 
 test('compareHead returns null files and names when the listing is capped or missing', async () => {

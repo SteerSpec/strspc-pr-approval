@@ -74,6 +74,7 @@ function makeRepo({
   unpromoted = [],
   totalUnpromoted,
   compareSourceError,
+  behindBy = 0,
 } = {}) {
   const calls = { getContent: [], headCompare: [], sourceCompare: [], listCommits: 0 };
   const github = {
@@ -92,6 +93,7 @@ function makeRepo({
               data: {
                 merge_base_commit: mergeBase ? { sha: mergeBase } : null,
                 files: changedFiles.map((filename) => ({ filename })),
+                behind_by: typeof behindBy === 'function' ? behindBy() : behindBy,
               },
             };
           }
@@ -570,4 +572,22 @@ test('mergeBlocker: a failed read blocks the merge rather than passing', async (
   assert.match(out, /could not be read \(502 boom\)/);
   const configRepo = makeRepo({ configError: Object.assign(new Error('boom'), { status: 500 }) });
   assert.match(await release.mergeBlocker(makeCtx({ repo: configRepo })), /500 boom/);
+});
+
+// -- staleness: a release PR behind its base ----------------------------------
+
+test('evaluate: a release PR behind its base is refused until release-please refreshes it', async () => {
+  const { github } = makeRepo({ behindBy: 2 });
+  const res = await release.evaluate(makeCtx({ repo: { github, calls: {} } }));
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, 'release PR is 2 commit(s) behind main; wait for release-please to refresh it');
+});
+
+test('mergeBlocker: a promotion that landed after the approval blocks the merge (fresh compare)', async () => {
+  let n = 0;
+  // evaluate sees an up-to-date head; by merge time the base has moved on.
+  const repo = makeRepo({ behindBy: () => (n++ === 0 ? 0 : 1) });
+  const ctx = makeCtx({ repo, options: { author: AUTHOR } });
+  assert.equal((await release.evaluate(ctx)).ok, true);
+  assert.match(await release.mergeBlocker(ctx), /1 commit\(s\) behind main/);
 });

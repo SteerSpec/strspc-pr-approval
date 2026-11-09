@@ -19,6 +19,7 @@ summary. Find the reason below.
 | `commit X came from #N, which has no standing approval` | Provenance: a develop PR merged without an approval | Approve PRs into develop before merging them, or promote by hand |
 | `release PR changes X, which release-please does not own` | A file outside release-please's output | Investigate — this is what the check is for |
 | `… unpromoted commit(s) …; promote first` | develop holds a changelog-visible commit | Promote first, then release |
+| `release PR is N commit(s) behind <base>` | The base moved since release-please built its PR | Wait: release-please refreshes its branch after every push to the base |
 | `superseded by #N` | A newer pin/template PR is open | Close this one |
 | `not merged: merge-token is not set` | Merging enabled, no App token | Set `STRSPC_PR_APPROVAL_MERGE=true` and the App secrets |
 | `not merged: mergeable_state is …` | GitHub says the PR is not ready | Usually resolves on the next event |

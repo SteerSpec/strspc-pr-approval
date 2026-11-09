@@ -19,7 +19,7 @@
 // candidates; evaluate() binds the head to the PR's own base with
 // isReleaseHead, so a policy that widens match.head cannot widen the check.
 
-const { parseConventionalTitle, describeError } = require('../util.js');
+const { parseConventionalTitle, describeError, compareHead } = require('../util.js');
 
 // pulls.listCommits stops at 250 commits, so a list that long may be truncated.
 const MAX_LISTED_COMMITS = 250;
@@ -247,6 +247,15 @@ async function checkUnpromoted({ github, owner, repo, base, source, config }) {
 // of this very base, then the diff, the config at the base and the commits,
 // and last the source branch. API errors propagate, so decide.js withdraws any
 // approval of ours before reporting the failure.
+// A release PR that lacks commits now on its base was generated before them:
+// merging it would tag a version whose bump and changelog leave them out.
+// release-please force-updates its branch after every push to the base, so
+// this only waits for that refresh.
+function behindBlocker(compared, base) {
+  const n = compared && compared.behindBy;
+  return n > 0 ? `release PR is ${n} commit(s) behind ${base}; wait for release-please to refresh it` : null;
+}
+
 async function evaluate(ctx) {
   const { github, owner, repo, pr } = ctx;
   const options = ctx.options || {};
@@ -261,6 +270,8 @@ async function evaluate(ctx) {
   }
 
   const c = await ctx.compare();
+  const stale = behindBlocker(c, base);
+  if (stale) return { ok: false, reason: stale };
   const proof = await checkReleasePr({
     github, owner, repo, pr, author, names: c.names, mergeBase: c.mergeBase,
   });
@@ -286,9 +297,13 @@ async function evaluate(ctx) {
 async function mergeBlocker(ctx) {
   const { github, owner, repo, pr } = ctx;
   const source = ctx.options && ctx.options.source;
-  if (!source) return null;
   const base = pr.base.ref;
   try {
+    // Fresh, not ctx.compare(): a promotion may have landed since evaluation.
+    const now = await compareHead({ github, owner, repo, baseRef: base, headSha: pr.head.sha });
+    const stale = behindBlocker(now, base);
+    if (stale) return stale;
+    if (!source) return null;
     const read = await readReleaseConfig({ github, owner, repo, base });
     if (!read.ok) return read.reason;
     const held = await checkUnpromoted({ github, owner, repo, base, source, config: read.config });
@@ -305,6 +320,7 @@ module.exports = {
   validateOptions,
   evaluate,
   mergeBlocker,
+  behindBlocker,
   MAX_LISTED_COMMITS,
   isReleaseHead,
   releaseAuthorBlocker,

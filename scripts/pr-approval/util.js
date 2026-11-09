@@ -88,6 +88,8 @@ async function compareHead({ github, owner, repo, baseRef, headSha, baseSha = nu
     files: Array.isArray(data.files) && data.files.length < MAX_LISTED_FILES ? data.files : null,
     mergeBase: (data.merge_base_commit && data.merge_base_commit.sha) || null,
     totalCommits: data.total_commits,
+    // Commits on the base that the head lacks.
+    behindBy: Number(data.behind_by) || 0,
   };
 }
 

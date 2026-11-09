@@ -26,9 +26,17 @@ const DEFAULT_POLICY_FILE = '.strspc/pr-approval.yml';
 const MARKER_PREFIX = '<!-- strspc-pr-approval';
 const marker = (base) => `${MARKER_PREFIX} base=${encodeURIComponent(base)} -->`;
 const MARKER = MARKER_PREFIX;
+// Anchored at the end of the body, where marker() puts it. A missing or
+// malformed marker yields null, which never equals a base, so the approval is
+// withdrawn rather than the run throwing (fail closed).
 function markerBase(review) {
-  const m = /<!-- strspc-pr-approval base=(\S+) -->/.exec(String(review.body || ''));
-  return m ? decodeURIComponent(m[1]) : null;
+  const m = /<!-- strspc-pr-approval base=([A-Za-z0-9%._~-]+) -->\s*$/.exec(String(review.body || ''));
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return null;
+  }
 }
 
 const truthy = (v) => String(v || '').trim().toLowerCase() === 'true';

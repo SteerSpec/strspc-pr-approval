@@ -708,3 +708,11 @@ test('approvals by the same account without our marker (strspc-pr-review) are ne
   assert.match(h.result.reason, /failing check/);
   assert.equal(h.calls.dismissReview.length, 0);
 });
+
+test('markerBase fails closed on a missing or malformed marker', () => {
+  const { markerBase } = decide;
+  assert.equal(markerBase({ body: `x\n\n${marker('release/1.x')}` }), 'release/1.x');
+  assert.equal(markerBase({ body: '<!-- strspc-pr-approval base=%E0%A4%A -->' }), null);
+  assert.equal(markerBase({ body: '<!-- strspc-pr-approval base=main --> trailing' }), null);
+  assert.equal(markerBase({ body: '' }), null);
+});

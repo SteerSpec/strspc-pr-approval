@@ -258,3 +258,46 @@ test('mergePullRequest works without a core', async () => {
   const { args } = setup();
   assert.equal((await mergePullRequest({ ...args, core: undefined })).merged, true);
 });
+
+// --- settle wait after this run's own approval --------------------------------
+
+function sequence(states) {
+  const s = setup();
+  let i = 0;
+  s.github.rest.pulls.get = async () => {
+    s.calls.pullsGet++;
+    const state = states[Math.min(i++, states.length - 1)];
+    return { data: { state: 'open', head: { sha: HEAD }, mergeable_state: state } };
+  };
+  return s;
+}
+
+test('MERGE-003: after approving in this run, waits for blocked -> clean, then merges', async () => {
+  const { args, calls } = sequence(['blocked', 'unknown', 'clean']);
+  const slept = [];
+  const r = await mergePullRequest({ ...args, justApproved: true, sleep: async (ms) => { slept.push(ms); }, settleMs: 5 });
+  assert.equal(r.merged, true);
+  assert.equal(calls.pullsGet, 3);
+  assert.deepEqual(slept, [5, 5]);
+  assert.equal(calls.merge.length, 1);
+});
+
+test('MERGE-003: the settle wait is bounded and ends with the usual refusal', async () => {
+  const { args, calls } = sequence(['blocked']);
+  const r = await mergePullRequest({ ...args, justApproved: true, sleep: async () => {}, settleAttempts: 3 });
+  assert.equal(r.merged, false);
+  assert.match(r.reason, /^mergeable_state is blocked/);
+  assert.equal(calls.pullsGet, 4);
+  assert.equal(calls.merge.length, 0);
+});
+
+test('MERGE-003: no settle wait when the approval predates this run, or for states an approval cannot change', async () => {
+  for (const [justApproved, state] of [[false, 'blocked'], [true, 'dirty'], [true, 'behind']]) {
+    const { args, calls } = sequence([state, 'clean']);
+    let slept = 0;
+    const r = await mergePullRequest({ ...args, justApproved, sleep: async () => { slept++; } });
+    assert.equal(r.merged, false, `${justApproved} ${state}`);
+    assert.equal(slept, 0);
+    assert.equal(calls.pullsGet, 1);
+  }
+});

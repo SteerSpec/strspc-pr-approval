@@ -641,6 +641,8 @@ test('MERGE-001: merge enabled calls merge with the evaluated head', async () =>
   assert.equal(args.ctx.pr.number, 5);
   assert.equal(args.owner, 'o');
   assert.equal(args.repo, 'r');
+  // This run posted the approval, so merge.js may wait for mergeability to settle.
+  assert.equal(args.justApproved, true);
 });
 
 test('MERGE-002: a refused merge leaves the PR approved with the reason', async () => {
@@ -655,6 +657,7 @@ test('MERGE-001: an already approved PR is still merged when enabled', async () 
   const h = await run({ reviews: [ourApproval(71, HEAD)], policy: { merge: { enabled: true } } });
   assert.equal(h.result.decision, 'merged');
   assert.equal(h.calls.createReview.length, 0);
+  assert.equal(h.mergeCalls[0].justApproved, false);
 });
 
 // --- the decide() wrapper -------------------------------------------------------------

@@ -100,7 +100,21 @@ function mergeableStateBlocker(state) {
   return `mergeable_state is ${state}${why ? ` (${why})` : ''}`;
 }
 
-async function mergePullRequest({ github, mergeGithub, owner, repo, pr, headSha, policy, kind, ctx, core }) {
+// When this run posted the approval itself, GitHub recomputes mergeable_state
+// asynchronously, so the first re-read usually still says blocked or unknown.
+// Nothing else re-triggers the run after that: the caller's loop guard drops
+// the bot's own review event, and every check already finished. So wait,
+// bounded (it bills runner minutes on private repos), and only for the two
+// states an approval can still change.
+const SETTLE_STATES = new Set([undefined, null, 'unknown', 'blocked']);
+const SETTLE_ATTEMPTS = 6;
+const SETTLE_MS = 10000;
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function mergePullRequest({
+  github, mergeGithub, owner, repo, pr, headSha, policy, kind, ctx, core,
+  justApproved = false, sleep = defaultSleep, settleAttempts = SETTLE_ATTEMPTS, settleMs = SETTLE_MS,
+}) {
   const number = pr && pr.number;
   const done = (result) => {
     const line = result.merged
@@ -138,7 +152,12 @@ async function mergePullRequest({ github, mergeGithub, owner, repo, pr, headSha,
 
     // MERGE-003: re-read; the head must still be the evaluated one and GitHub
     // must call it clean.
-    const { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+    let { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+    for (let i = 0; justApproved && i < settleAttempts && SETTLE_STATES.has(current.mergeable_state) &&
+      current.head && current.head.sha === headSha && !current.merged; i++) {
+      await sleep(settleMs);
+      ({ data: current } = await github.rest.pulls.get({ owner, repo, pull_number: number }));
+    }
     if (current.merged) return refuse('already merged');
     if (current.state && current.state !== 'open') return refuse(`PR is ${current.state}`);
     if (!current.head || current.head.sha !== headSha) {
@@ -167,6 +186,8 @@ async function mergePullRequest({ github, mergeGithub, owner, repo, pr, headSha,
 }
 
 module.exports = {
+  SETTLE_ATTEMPTS,
+  SETTLE_MS,
   mergePullRequest,
   chooseMethod,
   allowedByRules,

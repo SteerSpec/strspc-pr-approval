@@ -14,6 +14,8 @@
 //
 // Not replayable, and reported as such: a release policy's `source` check reads
 // today's branches, not the branches at the time, so it is switched off here;
+// a sync-back compares its files with today's release branch, so an older
+// sync-back reads as "differs" once a later release moved that branch on;
 // pin/template supersession reads today's open PRs.
 
 const fs = require('fs');

@@ -326,7 +326,9 @@ async function decideInner({
   if (!(policy.merge && policy.merge.enabled)) {
     return finish('approved', alreadyApproved ? `already approved: ${summary}` : summary);
   }
-  const result = await merge({ github, mergeGithub, owner, repo, pr, headSha, policy, kind, ctx, core });
+  const result = await merge({
+    github, mergeGithub, owner, repo, pr, headSha, policy, kind, ctx, core, justApproved: !alreadyApproved,
+  });
   if (result.merged) return finish('merged', `${summary}; merged (${result.method})`, { merged: true });
   return finish('approved', `${summary}; not merged: ${result.reason}`);
 }

@@ -176,7 +176,7 @@ test('fetchCheckRuns drops this run and unfinished runs named like its job; keep
   const github = checksGithub([[
     { id: 1, name: 'anything', status: 'in_progress', details_url: 'https://github.com/o/r/actions/runs/777/job/1' },
     { id: 2, name: 'approve', status: 'queued', details_url: 'https://github.com/o/r/actions/runs/555' },
-    { id: 3, name: 'pr-approval', status: 'in_progress' },
+    { id: 3, name: 'strspc-pr-approval', status: 'in_progress' },
     { id: 4, name: 'extra-self', status: 'in_progress' },
     { id: 5, name: 'approve', status: 'completed', conclusion: 'success' },
     { id: 6, name: 'other', status: 'completed', conclusion: 'success', details_url: 'https://github.com/o/r/actions/runs/7770' },

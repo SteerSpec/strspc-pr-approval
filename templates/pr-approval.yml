@@ -40,7 +40,9 @@ on:
     types: [completed]
 
 jobs:
-  pr-approval:
+  # A unique job id: check runs are named after it, and both the if: below and
+  # the action ignore unfinished runs of that name as their own.
+  strspc-pr-approval:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,7 +75,7 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository
       ) || (
         github.event_name == 'check_run' &&
-        github.event.check_run.name != 'pr-approval' &&
+        github.event.check_run.name != 'strspc-pr-approval' &&
         github.event.check_run.pull_requests[0] != null
       ) || (
         github.event_name == 'workflow_run' &&

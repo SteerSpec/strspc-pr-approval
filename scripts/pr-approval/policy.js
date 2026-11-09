@@ -132,7 +132,10 @@ function validateMatch(match, where, errors) {
 function validateRequire(req, where, errors) {
   if (!isPlainObject(req)) { errors.push(`${where}: must be a mapping`); return; }
   unknownKeys(req, REQUIRE_KEYS, where, errors);
-  for (const k of ['checks', 'paths', 'forbid-paths', 'no-labels']) if (k in req && !isStringList(req[k])) errors.push(`${where}.${k}: must be a list of strings`);
+  // Non-empty: an empty `paths` would bound nothing while looking like a bound.
+  for (const k of ['checks', 'paths', 'forbid-paths', 'no-labels']) {
+    if (k in req && (!isStringList(req[k]) || req[k].length === 0)) errors.push(`${where}.${k}: must be a non-empty list of strings`);
+  }
   for (const k of ['max-files', 'max-additions', 'max-deletions']) if (k in req && !isPositiveInt(req[k])) errors.push(`${where}.${k}: must be a non-negative integer`);
 }
 

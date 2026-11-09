@@ -25,7 +25,7 @@ function setup({
       pulls: {
         get: async () => {
           calls.pullsGet++;
-          return { data: val(current instanceof Error ? current : { state: 'open', base: { ref: 'main' }, head: { sha: HEAD }, mergeable_state: 'clean', ...current }) };
+          return { data: val(current instanceof Error ? current : { state: 'open', title: 'chore: x', labels: [], base: { ref: 'main' }, head: { ref: 'feature', sha: HEAD }, mergeable_state: 'clean', ...current }) };
         },
         merge: async () => { throw new Error('merged with the workflow client'); },
       },
@@ -37,7 +37,7 @@ function setup({
   const core = { info: (m) => calls.info.push(m) };
   const args = {
     github, mergeGithub, owner: 'o', repo: 'r',
-    pr: { number: 7, base: { ref: 'main' } }, headSha: HEAD,
+    pr: { number: 7, title: 'chore: x', labels: [], base: { ref: 'main' }, head: { ref: 'feature', sha: HEAD } }, headSha: HEAD,
     policy: { id: 'p', rules: ['MERGE-001'], merge: policyMerge }, kind, ctx: { marker: 'ctx' }, core,
   };
   return { args, calls, github, mergeGithub };
@@ -171,10 +171,9 @@ test('merge refuses when the PR was retargeted after the approval', async () => 
 
 test('MERGE-003: a requiresTip kind refuses when the head is no longer the branch tip', async () => {
   const { args, calls, github } = setup({ kind: { requiresTip: true } });
-  args.pr = { ...args.pr, head: { ref: 'develop' } };
   github.rest.git = { getRef: async () => ({ data: { object: { sha: 'c'.repeat(40) } } }) };
   const stale = await mergePullRequest(args);
-  assert.match(stale.reason, /is no longer the tip of develop/);
+  assert.match(stale.reason, /is no longer the tip of feature/);
   assert.equal(calls.merge.length, 0);
   github.rest.git = { getRef: async () => ({ data: { object: { sha: HEAD } } }) };
   assert.equal((await mergePullRequest(args)).merged, true);
@@ -206,7 +205,8 @@ test('MERGE-005: the kind mergeBlocker refuses with its reason and receives ctx'
   const r = await mergePullRequest(args);
   assert.deepEqual(r, { merged: false, reason: 'source branch has an unreleased commit' });
   assert.equal(seen.marker, 'ctx');
-  assert.equal(calls.pullsGet, 0);
+  // Runs after the re-read, so it judges the PR as it is now.
+  assert.equal(calls.pullsGet, 1);
   assert.equal(calls.merge.length, 0);
 });
 
@@ -297,7 +297,7 @@ function sequence(states) {
   s.github.rest.pulls.get = async () => {
     s.calls.pullsGet++;
     const state = states[Math.min(i++, states.length - 1)];
-    return { data: { state: 'open', base: { ref: 'main' }, head: { sha: HEAD }, mergeable_state: state } };
+    return { data: { state: 'open', title: 'chore: x', labels: [], base: { ref: 'main' }, head: { ref: 'feature', sha: HEAD }, mergeable_state: state } };
   };
   return s;
 }
@@ -330,4 +330,27 @@ test('MERGE-003: no settle wait when the approval predates this run, or for stat
     assert.equal(slept, 0);
     assert.equal(calls.pullsGet, 1);
   }
+});
+
+test('merge refuses when the title, labels or head branch changed since the evaluation', async () => {
+  for (const [over, re] of [
+    [{ title: 'feat: other' }, /title changed since the evaluation/],
+    [{ labels: [{ name: 'hold' }] }, /labels changed since the evaluation/],
+    [{ head: { ref: 'other', sha: HEAD } }, /head branch changed from feature/],
+  ]) {
+    const { args, calls } = setup({ current: over });
+    const r = await mergePullRequest(args);
+    assert.equal(r.merged, false);
+    assert.match(r.reason, re);
+    assert.equal(calls.merge.length, 0);
+  }
+});
+
+test('MERGE-005: the kind mergeBlocker runs after the PR is re-read', async () => {
+  const order = [];
+  const { args, github } = setup({ kind: { mergeBlocker: async () => { order.push('blocker'); return null; } } });
+  const get = github.rest.pulls.get;
+  github.rest.pulls.get = async (...a) => { order.push('get'); return get(...a); };
+  await mergePullRequest(args);
+  assert.deepEqual(order, ['get', 'blocker']);
 });

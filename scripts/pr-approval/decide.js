@@ -301,6 +301,7 @@ async function decideInner({
   // APPROVE-003: everything the decision rests on is re-read before and after.
   const changed = async (current) => {
     if (current.head.sha !== headSha) return `head moved from ${headSha.slice(0, 8)} to ${current.head.sha.slice(0, 8)}`;
+    if (current.head.ref !== pr.head.ref) return `head branch changed from ${pr.head.ref}`;
     if (!current.base || current.base.ref !== pr.base.ref) return `base changed from ${pr.base.ref}`;
     if ((current.title || '') !== (pr.title || '')) return 'title changed';
     if (current.draft) return 'PR converted to draft';

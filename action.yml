@@ -115,7 +115,11 @@ runs:
           await decide({
             github: api,
             botGithub: makeApiClient(getOctokit, env.PR_APPROVAL_APPROVE_TOKEN),
-            mergeGithub: env.PR_APPROVAL_MERGE_TOKEN ? makeApiClient(getOctokit, env.PR_APPROVAL_MERGE_TOKEN) : null,
+            // MERGE-002: a merge token equal to the read token (GITHUB_TOKEN by
+            // default) is no merge token at all.
+            mergeGithub: env.PR_APPROVAL_MERGE_TOKEN && env.PR_APPROVAL_MERGE_TOKEN !== env.PR_APPROVAL_GITHUB_TOKEN
+              ? makeApiClient(getOctokit, env.PR_APPROVAL_MERGE_TOKEN)
+              : null,
             policyGithub: env.PR_APPROVAL_POLICY_TOKEN ? makeApiClient(getOctokit, env.PR_APPROVAL_POLICY_TOKEN) : api,
             context,
             core,

@@ -102,8 +102,16 @@ async function evaluate(ctx, deps) {
 
 // Re-proved at the moment of merging: the release branch may have moved on
 // since the evaluation, and an old copy must not be merged into develop.
+// With a fresh comparison: decide.js memoises ctx.compare for the evaluation.
 async function mergeBlocker(ctx, deps) {
-  const res = await evaluate(ctx, deps);
+  const { compareHead } = require('../util.js');
+  const { github, owner, repo, pr } = ctx;
+  let fresh = null;
+  const compare = async () => {
+    if (!fresh) fresh = await compareHead({ github, owner, repo, baseRef: pr.base.ref, headSha: pr.head.sha });
+    return fresh;
+  };
+  const res = await evaluate({ ...ctx, compare }, deps);
   return res.ok ? null : res.reason;
 }
 

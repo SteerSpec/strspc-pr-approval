@@ -49,7 +49,7 @@ async function fetchCheckRuns({ github, context, owner, repo, headSha, selfJobNa
     page++;
   }
   const selfRunRe = new RegExp(`/runs/${String(context.runId)}(/|$)`);
-  const selfJobs = new Set(['pr-approval', context.job, ...selfJobNames].filter(Boolean));
+  const selfJobs = new Set(['strspc-pr-approval', context.job, ...selfJobNames].filter(Boolean));
   const notSelf = all.filter((cr) => cr != null &&
     !(cr.details_url && selfRunRe.test(cr.details_url)) &&
     !(selfJobs.has(cr.name) && cr.status !== 'completed'));

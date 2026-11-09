@@ -110,6 +110,7 @@ function mergeableStateBlocker(state) {
 const SETTLE_STATES = new Set([undefined, null, 'unknown', 'blocked']);
 const SETTLE_ATTEMPTS = 6;
 const SETTLE_MS = 10000;
+const labelSet = (p) => (p.labels || []).map((l) => (typeof l === 'string' ? l : l.name)).sort().join('\n');
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function mergePullRequest({
@@ -146,13 +147,6 @@ async function mergePullRequest({
     });
     if (chosen.reason) return refuse(`${chosen.reason} (MERGE-004)`);
 
-    // Kind-specific conditions that must hold at the moment of merging (for
-    // a release, MERGE-005: nothing new on the source branch).
-    if (kind && typeof kind.mergeBlocker === 'function') {
-      const blocker = await kind.mergeBlocker(ctx);
-      if (blocker) return refuse(blocker);
-    }
-
     // MERGE-003: re-read; the head must still be the evaluated one and GitHub
     // must call it clean.
     let { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: number });
@@ -168,6 +162,16 @@ async function mergePullRequest({
     if (!current.base || current.base.ref !== pr.base.ref) {
       return refuse(`base changed from ${pr.base.ref} to ${current.base ? current.base.ref : 'none'}`);
     }
+    if (!current.head || current.head.sha !== headSha) {
+      const now = current.head && current.head.sha ? current.head.sha.slice(0, 8) : 'unknown';
+      return refuse(`head moved from ${headSha.slice(0, 8)} to ${now} (MERGE-003)`);
+    }
+    // What selected the policy and fed the proofs must not have changed since
+    // the evaluation, on this path too: an approval that already stood skips
+    // decide.js's post-approval re-read.
+    if (current.head.ref !== pr.head.ref) return refuse(`head branch changed from ${pr.head.ref}`);
+    if ((current.title || '') !== (pr.title || '')) return refuse('title changed since the evaluation');
+    if (labelSet(current) !== labelSet(pr)) return refuse('labels changed since the evaluation');
     // A kind whose proof covers its branch (promotion, release) must still be
     // looking at the branch tip: a commit pushed to develop since the
     // evaluation is in no promotion's proof.
@@ -177,10 +181,13 @@ async function mergePullRequest({
         return refuse(`head ${headSha.slice(0, 8)} is no longer the tip of ${pr.head.ref} (MERGE-003)`);
       }
     }
-    if (!current.head || current.head.sha !== headSha) {
-      const now = current.head && current.head.sha ? current.head.sha.slice(0, 8) : 'unknown';
-      return refuse(`head moved from ${headSha.slice(0, 8)} to ${now} (MERGE-003)`);
+    // Kind-specific conditions that must hold at the moment of merging (for
+    // a release, MERGE-005: nothing new on the source branch).
+    if (kind && typeof kind.mergeBlocker === 'function') {
+      const blocker = await kind.mergeBlocker(ctx);
+      if (blocker) return refuse(blocker);
     }
+
     const blocked = mergeableStateBlocker(current.mergeable_state);
     if (blocked) return refuse(`${blocked} (MERGE-003)`);
 

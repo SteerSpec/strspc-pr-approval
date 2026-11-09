@@ -183,7 +183,9 @@ test('APPROVE-010: kind custom needs a require bound on paths or max-files', () 
 test('POLICY-004: require errors', () => {
   expectError(file([pol('a', { require: 1 })]), /require: must be a mapping/);
   expectError(file([pol('a', { require: { x: 1 } })]), /require: unknown key 'x'/);
-  expectError(file([pol('a', { require: { checks: 'c' } })]), /require\.checks: must be a list/);
+  expectError(file([pol('a', { require: { checks: 'c' } })]), /require\.checks: must be a non-empty list/);
+  // An empty list would bound nothing while looking like a bound.
+  expectError(file([pol('a', { require: { paths: [] } })]), /require\.paths: must be a non-empty list/);
   expectError(file([pol('a', { require: { 'max-files': -1 } })]), /max-files: must be a non-negative integer/);
   expectError(file([pol('a', { require: { 'max-additions': 1.5 } })]), /max-additions: must be a non-negative integer/);
 });

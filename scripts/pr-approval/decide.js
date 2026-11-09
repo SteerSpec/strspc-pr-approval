@@ -39,6 +39,7 @@ function markerBase(review) {
   }
 }
 
+const labelSet = (p) => (p.labels || []).map((l) => (typeof l === 'string' ? l : l.name)).sort().join('\n');
 const truthy = (v) => String(v || '').trim().toLowerCase() === 'true';
 
 function readConfig(env = process.env) {
@@ -304,6 +305,8 @@ async function decideInner({
     if ((current.title || '') !== (pr.title || '')) return 'title changed';
     if (current.draft) return 'PR converted to draft';
     if (current.state && current.state !== 'open') return `PR is ${current.state}`;
+    // Labels take part in match, require.no-labels and template-sync.
+    if (labelSet(current) !== labelSet(pr)) return 'labels changed';
     if (mergeBase) {
       const now = await compareHead({ github, owner, repo, baseRef: pr.base.ref, headSha });
       if (now.mergeBase !== mergeBase) return `base ${pr.base.ref} was rewritten`;

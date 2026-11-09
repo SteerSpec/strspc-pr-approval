@@ -57,7 +57,8 @@ const REALM_FILES = {
   'o/r@main/rules/APPROVE.json': entity([
     { id: 'APPROVE-005', state: 'D' },
     { id: 'APPROVE-006', state: 'D' },
-    { id: 'APPROVE-099', state: 'W' },
+    { id: 'APPROVE-099', state: 'R' },
+    { id: 'APPROVE-098', state: 'T' },
   ]),
 };
 const pol = (id, extra = {}) => ({ id, kind: 'release', rules: ['APPROVE-006'], ...extra });
@@ -350,9 +351,9 @@ test('POLICY-005: a citation of a missing rule is refused', async () => {
   await assert.rejects(policy.loadPolicy({ github: gh, root: ROOT, kinds }), /rule APPROVE-042 not found/);
 });
 
-test('POLICY-005: a citation of a withdrawn rule is refused', async () => {
+test('POLICY-005: a citation of a retired or terminated rule is refused', async () => {
   const gh = fakeRepo({ files: { [rootKey()]: file([pol('a', { rules: ['APPROVE-099'] })]), ...REALM_FILES } });
-  await assert.rejects(policy.loadPolicy({ github: gh, root: ROOT, kinds }), /APPROVE-099 is withdrawn/);
+  await assert.rejects(policy.loadPolicy({ github: gh, root: ROOT, kinds }), /APPROVE-099 is retired/);
 });
 
 test('POLICY-005: an entity file that is not JSON is refused', async () => {

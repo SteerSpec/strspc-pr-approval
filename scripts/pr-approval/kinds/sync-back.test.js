@@ -261,3 +261,10 @@ test('sync-back: an API error other than 404 propagates', async () => {
   const github = happyGithub({ files: [file('CHANGELOG.md', 's1')], onRelease: { 'CHANGELOG.md': boom } });
   await assert.rejects(syncBack.evaluate(makeCtx({ github }), fakeRelease()), /server error/);
 });
+
+test('sync-back: mergeBlocker re-runs the proof at merge time', async () => {
+  const sb = require('./sync-back.js');
+  assert.equal(typeof sb.mergeBlocker, 'function');
+  const ctx = { github: {}, owner: 'o', repo: 'r', pr: { number: 1, user: { login: 'x' }, head: { ref: 'chore/sync-release-files', sha: 'a'.repeat(40) }, base: { ref: 'develop' } }, options: {} };
+  assert.match(await sb.mergeBlocker(ctx, { readReleaseConfig: async () => ({ ok: true, config: {} }), allowedReleaseFiles: () => new Set() }), /options.author is not set/);
+});

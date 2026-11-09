@@ -33,9 +33,11 @@ const isFailedCheck = (cr) =>
 // (the bot, or merged approved PRs, or match.authors for custom), so no
 // unreviewed workflow file reaches the head. Keep that true for new kinds.
 //
-// Check runs for a SHA, without this workflow's own run or any run of this
-// job (a sibling cancelled by the concurrency group is not CI), deduped by
-// (name, app) keeping the latest attempt.
+// Check runs for a SHA, without this workflow's own run or an UNFINISHED run
+// of a check with this job's name (a sibling the concurrency group is about to
+// cancel), deduped by (name, app) keeping the latest attempt. A completed run
+// with the same name still counts: names are not unique across workflows, so
+// it may be someone's CI. A cancelled sibling passes anyway (see above).
 async function fetchCheckRuns({ github, context, owner, repo, headSha, selfJobNames = [] }) {
   const all = [];
   let page = 1;
@@ -50,7 +52,7 @@ async function fetchCheckRuns({ github, context, owner, repo, headSha, selfJobNa
   const selfJobs = new Set(['pr-approval', context.job, ...selfJobNames].filter(Boolean));
   const notSelf = all.filter((cr) => cr != null &&
     !(cr.details_url && selfRunRe.test(cr.details_url)) &&
-    !selfJobs.has(cr.name));
+    !(selfJobs.has(cr.name) && cr.status !== 'completed'));
   const latest = new Map();
   for (const cr of notSelf) {
     const key = `${cr.name}::${cr.app && cr.app.id}`;

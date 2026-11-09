@@ -172,7 +172,7 @@ test('fetchCheckRuns breaks ties on the same timestamp by the higher id', async 
   assert.deepEqual(runs.map((r) => r.id), [9]);
 });
 
-test('fetchCheckRuns drops this run and every run of its own job, finished or not', async () => {
+test('fetchCheckRuns drops this run and unfinished runs named like its job; keeps finished ones', async () => {
   const github = checksGithub([[
     { id: 1, name: 'anything', status: 'in_progress', details_url: 'https://github.com/o/r/actions/runs/777/job/1' },
     { id: 2, name: 'approve', status: 'queued', details_url: 'https://github.com/o/r/actions/runs/555' },
@@ -185,19 +185,22 @@ test('fetchCheckRuns drops this run and every run of its own job, finished or no
   const runs = await util.fetchCheckRuns({
     github, context: ctx, owner: 'o', repo: 'r', headSha: 'abc', selfJobNames: ['extra-self'],
   });
-  assert.deepEqual(runs.map((r) => r.id), [6]);
+  // 5 is a finished 'approve' (context.job): names are not unique across
+  // workflows, so a completed run of that name may be someone's CI.
+  assert.deepEqual(runs.map((r) => r.id).sort(), [5, 6]);
 });
 
-test('APPROVE-002: runs of this job are filtered out; a failing CI run is kept', async () => {
+test('APPROVE-002: a failing CI job sharing this job\'s name still blocks; cancelled siblings pass', async () => {
   const github = checksGithub([[
     { id: 1, name: 'pr-approval', app: { id: 1 }, status: 'completed', conclusion: 'cancelled' },
     { id: 2, name: 'approve', app: { id: 1 }, status: 'completed', conclusion: 'cancelled' },
     { id: 3, name: 'ci', app: { id: 1 }, status: 'completed', conclusion: 'failure' },
     { id: 4, name: 'lint', app: { id: 1 }, status: 'completed', conclusion: 'cancelled' },
+    { id: 5, name: 'pr-approval', app: { id: 2 }, status: 'completed', conclusion: 'failure' },
   ]]);
   const runs = await util.fetchCheckRuns({ github, context: ctx, owner: 'o', repo: 'r', headSha: 'abc' });
-  assert.deepEqual(runs.map((r) => r.id).sort(), [3, 4]);
-  assert.deepEqual(runs.filter(util.isFailedCheck).map((r) => r.id), [3]);
+  assert.deepEqual(runs.map((r) => r.id).sort(), [1, 2, 3, 4, 5]);
+  assert.deepEqual(runs.filter(util.isFailedCheck).map((r) => r.id).sort(), [3, 5]);
 });
 
 test('fetchCheckRuns stops on an empty page even if total_count says more', async () => {

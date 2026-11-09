@@ -227,7 +227,8 @@ async function makeRuleResolver({ github, cache = new Map() }) {
     if (!doc) return `entity ${entity} not found at ${key}`;
     const rule = (doc.rules || []).find((r) => r.id === `${entity}-${m[3]}`);
     if (!rule) return `rule ${ruleId} not found in ${key}`;
-    if (rule.state === 'W') return `rule ${ruleId} is withdrawn`;
+    // R (Retired) and T (Terminated) are the schema's end-of-life states.
+    if (rule.state === 'R' || rule.state === 'T') return `rule ${ruleId} is ${rule.state === 'R' ? 'retired' : 'terminated'}`;
     return null;
   };
 }

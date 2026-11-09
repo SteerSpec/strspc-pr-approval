@@ -24,8 +24,9 @@ const REPO_SETTING = {
 };
 
 // The merge methods the base branch's effective rules allow.
-//   null   no pull_request rule constrains the method (or the rules cannot be
-//          read: 404 when none apply, 403 when the token may not read them)
+//   null   no pull_request rule constrains the method (404: none apply)
+//   a 403 throws: rules we may not read are not "no rules", and a merge token
+//   that bypasses a ruleset could otherwise merge with a forbidden method
 //   [...]  the intersection of every pull_request rule's allowed methods;
 //          possibly empty when two rules disagree, which allows nothing
 async function allowedByRules({ github, owner, repo, branch }) {
@@ -35,7 +36,7 @@ async function allowedByRules({ github, owner, repo, branch }) {
       owner, repo, branch, per_page: 100,
     }));
   } catch (err) {
-    if (err.status === 404 || err.status === 403) return null;
+    if (err.status === 404) return null;
     throw err;
   }
   let allowed = null;
@@ -116,10 +117,12 @@ async function mergePullRequest({
   justApproved = false, sleep = defaultSleep, settleAttempts = SETTLE_ATTEMPTS, settleMs = SETTLE_MS,
 }) {
   const number = pr && pr.number;
+  // POLICY-005: the merge line names what authorised it.
+  const policyTag = policy ? `${policy.id}[${(policy.rules || []).join(',')}]` : 'none';
   const done = (result) => {
     const line = result.merged
-      ? `pr-approval merge pr=${number} merged=true method=${result.method}`
-      : `pr-approval merge pr=${number} merged=false reason=${result.reason}`;
+      ? `pr-approval merge pr=${number} policy=${policyTag} merged=true method=${result.method}`
+      : `pr-approval merge pr=${number} policy=${policyTag} merged=false reason=${result.reason}`;
     if (core && typeof core.info === 'function') core.info(line);
     return result;
   };
@@ -160,6 +163,20 @@ async function mergePullRequest({
     }
     if (current.merged) return refuse('already merged');
     if (current.state && current.state !== 'open') return refuse(`PR is ${current.state}`);
+    // A retarget after the approval: the approval was earned under another
+    // base's policy (APPROVE-004 withdraws it on the next run).
+    if (!current.base || current.base.ref !== pr.base.ref) {
+      return refuse(`base changed from ${pr.base.ref} to ${current.base ? current.base.ref : 'none'}`);
+    }
+    // A kind whose proof covers its branch (promotion, release) must still be
+    // looking at the branch tip: a commit pushed to develop since the
+    // evaluation is in no promotion's proof.
+    if (kind && kind.requiresTip && pr.head && pr.head.ref) {
+      const { data: tip } = await github.rest.git.getRef({ owner, repo, ref: `heads/${pr.head.ref}` });
+      if (tip.object.sha !== headSha) {
+        return refuse(`head ${headSha.slice(0, 8)} is no longer the tip of ${pr.head.ref} (MERGE-003)`);
+      }
+    }
     if (!current.head || current.head.sha !== headSha) {
       const now = current.head && current.head.sha ? current.head.sha.slice(0, 8) : 'unknown';
       return refuse(`head moved from ${headSha.slice(0, 8)} to ${now} (MERGE-003)`);

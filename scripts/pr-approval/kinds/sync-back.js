@@ -100,10 +100,18 @@ async function evaluate(ctx, deps) {
   return { ok: true, summary: `sync-back (${c.files.length} release file(s) identical to ${releaseBranch})` };
 }
 
+// Re-proved at the moment of merging: the release branch may have moved on
+// since the evaluation, and an old copy must not be merged into develop.
+async function mergeBlocker(ctx, deps) {
+  const res = await evaluate(ctx, deps);
+  return res.ok ? null : res.reason;
+}
+
 module.exports = {
   name: 'sync-back',
   requiresTip: false,
   defaultMatch,
   validateOptions,
   evaluate,
+  mergeBlocker,
 };

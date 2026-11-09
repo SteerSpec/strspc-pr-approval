@@ -25,7 +25,7 @@ function setup({
       pulls: {
         get: async () => {
           calls.pullsGet++;
-          return { data: val(current instanceof Error ? current : { state: 'open', head: { sha: HEAD }, mergeable_state: 'clean', ...current }) };
+          return { data: val(current instanceof Error ? current : { state: 'open', base: { ref: 'main' }, head: { sha: HEAD }, mergeable_state: 'clean', ...current }) };
         },
         merge: async () => { throw new Error('merged with the workflow client'); },
       },
@@ -78,7 +78,7 @@ test('MERGE-003: merges the evaluated head with the merge client and logs one li
     route: 'GET /repos/{owner}/{repo}/rules/branches/{branch}',
     params: { owner: 'o', repo: 'r', branch: 'main', per_page: 100 },
   });
-  assert.deepEqual(calls.info, ['pr-approval merge pr=7 merged=true method=merge']);
+  assert.deepEqual(calls.info, ['pr-approval merge pr=7 policy=p[MERGE-001] merged=true method=merge']);
 });
 
 // --- MERGE-004 ----------------------------------------------------------------
@@ -148,12 +148,42 @@ test('MERGE-004: without rules, several or no repository methods are ambiguous',
   }
 });
 
-test('MERGE-004: a 404 or 403 on the rules endpoint counts as no rules', async () => {
-  for (const status of [404, 403]) {
-    const { args, calls } = setup({ rules: httpError(status) });
-    assert.deepEqual(await mergePullRequest(args), { merged: true, method: 'merge' });
-    assert.equal(calls.reposGet, 1);
-  }
+test('MERGE-004: a 404 on the rules endpoint counts as no rules', async () => {
+  const { args, calls } = setup({ rules: httpError(404) });
+  assert.deepEqual(await mergePullRequest(args), { merged: true, method: 'merge' });
+  assert.equal(calls.reposGet, 1);
+});
+
+test('MERGE-004: a 403 on the rules endpoint refuses: unreadable rules are not "no rules"', async () => {
+  const { args, calls } = setup({ rules: httpError(403, 'Forbidden') });
+  const r = await mergePullRequest(args);
+  assert.equal(r.merged, false);
+  assert.match(r.reason, /403 Forbidden/);
+  assert.equal(calls.merge.length, 0);
+});
+
+test('merge refuses when the PR was retargeted after the approval', async () => {
+  const { args, calls } = setup({ current: { base: { ref: 'develop' } } });
+  const r = await mergePullRequest(args);
+  assert.deepEqual(r, { merged: false, reason: 'base changed from main to develop' });
+  assert.equal(calls.merge.length, 0);
+});
+
+test('MERGE-003: a requiresTip kind refuses when the head is no longer the branch tip', async () => {
+  const { args, calls, github } = setup({ kind: { requiresTip: true } });
+  args.pr = { ...args.pr, head: { ref: 'develop' } };
+  github.rest.git = { getRef: async () => ({ data: { object: { sha: 'c'.repeat(40) } } }) };
+  const stale = await mergePullRequest(args);
+  assert.match(stale.reason, /is no longer the tip of develop/);
+  assert.equal(calls.merge.length, 0);
+  github.rest.git = { getRef: async () => ({ data: { object: { sha: HEAD } } }) };
+  assert.equal((await mergePullRequest(args)).merged, true);
+});
+
+test('POLICY-005: the merge log line names the policy and its rules', async () => {
+  const { args, calls } = setup();
+  await mergePullRequest(args);
+  assert.match(calls.info[0], /policy=p\[MERGE-001\] merged=true/);
 });
 
 test('MERGE-004: any other error reading the rules refuses without throwing', async () => {
@@ -244,7 +274,7 @@ test('MERGE-003: a 409 from the merge call means the head moved', async () => {
 test('MERGE-003: any other merge error is reported, never thrown', async () => {
   const { args, calls } = setup({ mergeResult: httpError(500, 'oops') });
   assert.deepEqual(await mergePullRequest(args), { merged: false, reason: 'merge API call failed: 500 oops' });
-  assert.deepEqual(calls.info, ['pr-approval merge pr=7 merged=false reason=merge API call failed: 500 oops']);
+  assert.deepEqual(calls.info, ['pr-approval merge pr=7 policy=p[MERGE-001] merged=false reason=merge API call failed: 500 oops']);
 });
 
 test('MERGE-003: a 200 response with merged:false is not a merge', async () => {
@@ -267,7 +297,7 @@ function sequence(states) {
   s.github.rest.pulls.get = async () => {
     s.calls.pullsGet++;
     const state = states[Math.min(i++, states.length - 1)];
-    return { data: { state: 'open', head: { sha: HEAD }, mergeable_state: state } };
+    return { data: { state: 'open', base: { ref: 'main' }, head: { sha: HEAD }, mergeable_state: state } };
   };
   return s;
 }

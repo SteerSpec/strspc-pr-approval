@@ -31,7 +31,7 @@ const basePr = () => ({
 const basePolicy = (extra = {}) => ({ id: 'release', kind: 'release', rules: ['APPROVE-006', 'MERGE-001'], ...extra });
 
 const realmFiles = {
-  'o/r@main/rules/APPROVE.json': { rules: [{ id: 'APPROVE-006', state: 'D' }, { id: 'APPROVE-099', state: 'W' }] },
+  'o/r@main/rules/APPROVE.json': { rules: [{ id: 'APPROVE-006', state: 'D' }, { id: 'APPROVE-099', state: 'R' }] },
   'o/r@main/rules/MERGE.json': { rules: [{ id: 'MERGE-001', state: 'D' }] },
 };
 const policyFile = (policies) => ({
@@ -318,7 +318,7 @@ test('POLICY-004: an invalid policy fails the job and takes no action', async ()
 test('POLICY-005: a policy citing a withdrawn rule fails the job', async () => {
   const h = await run({ policy: { rules: ['APPROVE-099'] } });
   assert.equal(h.result.decision, 'error');
-  assert.match(h.result.reason, /cites APPROVE-099: rule APPROVE-099 is withdrawn/);
+  assert.match(h.result.reason, /cites APPROVE-099: rule APPROVE-099 is retired/);
   assertNoWrites(h);
 });
 
@@ -532,6 +532,8 @@ test('APPROVE-003: base, title, draft and state changes before approving skip', 
     [{ title: 'chore: something else' }, /title changed/],
     [{ draft: true }, /PR converted to draft/],
     [{ state: 'closed' }, /PR is closed during evaluation/],
+    // Labels take part in match, require.no-labels and template-sync.
+    [{ labels: [{ name: 'do-not-merge' }] }, /labels changed during evaluation/],
   ];
   for (const [over, re] of cases) {
     const h = await run({ prReads: [over] });

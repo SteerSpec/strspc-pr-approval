@@ -11,3 +11,10 @@ whose content is fully determined by something that was already reviewed or gene
 Do not use `kind: custom` to auto-approve human-authored code. Keep `extends:` pinned to tags you
 control; a tag you do not control is someone else's merge button. Start every new repository in
 dry-run and backtest it.
+
+## Known limit: provenance reads today's access
+
+A promotion's provenance counts an approval only from a reviewer with push access, and GitHub
+reports that access as it is *now*, not as it was when the source PR merged: there is no API for
+historical access. A reviewer who gained push access later can therefore make an old approval
+count. Keep push access tight, and review access grants as you would a merge.

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Troubleshooting — start here
+    url: https://github.com/SteerSpec/strspc-pr-approval/blob/develop/docs/troubleshooting.md
+    about: Every run logs a `reason` and the rule IDs it applied. Most questions are answered there.
+  - name: Report a security vulnerability
+    url: https://github.com/SteerSpec/strspc-pr-approval/security/advisories/new
+    about: Report privately through GitHub. Never file a security report as a public issue.

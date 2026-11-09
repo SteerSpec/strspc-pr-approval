@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  # No paths filter: the approval gate needs at least one completed check run
+  # on the head, so a docs-only PR must still produce one.
+  pull_request:
+    # edited: the commits job checks the title, which can change right before a squash.
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  # A promotion (same-repository develop -> main PR) aggregates lifecycle
+  # transitions that were each validated on the way into develop, so exactly
+  # that PR is exempt from the rule diff.
+  rules:
+    uses: SteerSpec/.github/.github/workflows/strspc-lint.yml@9263d52f18833179ea1ed4fbedbff5516547da2d # main
+    permissions:
+      contents: read
+      pull-requests: read
+    with:
+      path: rules/
+      diff: >-
+        ${{ !(
+          github.event_name == 'pull_request'
+          && github.base_ref == 'main'
+          && github.head_ref == 'develop'
+          && github.event.pull_request.head.repo.full_name == github.repository
+        ) }}
+
+  check:
+    uses: SteerSpec/.github/.github/workflows/strspc-check.yml@9263d52f18833179ea1ed4fbedbff5516547da2d # main
+    permissions:
+      contents: read
+      pull-requests: read
+
+  # PRs are squashed into develop, so the title can become the commit
+  # release-please reads; a mistyped title is a wrong release.
+  commits:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          validateSingleCommit: true
+          validateSingleCommitMatchesPrTitle: true
+      # Same limit as header-max-length in .commitlintrc.yml, counted in UTF-16
+      # code units like commitlint. Read through the API because a re-run keeps
+      # its original event's title.
+      - name: Title length
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          TITLE=$(gh pr view "$PR_URL" --json title --jq .title)
+          LENGTH=$(TITLE="$TITLE" node -p 'process.env.TITLE.length')
+          if [ "$LENGTH" -gt 120 ]; then
+            echo "::error::PR title is $LENGTH characters, the limit is 120"
+            exit 1
+          fi
+
+  test:
+    name: node --test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Install dev dependencies
+        run: npm ci --ignore-scripts
+      - name: Run unit tests (with coverage gate)
+        run: npm run test:coverage
+
+  lint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run actionlint
+        uses: reviewdog/action-actionlint@1758727be30241166609dad4c97588b6ad411f32 # v1
+        with:
+          fail_level: error
+          # templates/ is linted because consumers copy it verbatim.
+          actionlint_flags: '.github/workflows/*.yml templates/*.yml'

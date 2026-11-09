@@ -1,0 +1,126 @@
+name: 'SteerSpec PR Approval'
+description: >-
+  Approves, and when a policy opts in merges, promotion, release, sync-back,
+  rules-pin and template-sync pull requests under a policy that cites a
+  SteerSpec rules realm.
+author: 'SteerSpec'
+branding:
+  icon: git-merge
+  color: green
+
+inputs:
+  bot-login:
+    required: true
+    description: >-
+      Login of the account that posts the APPROVE review (the owner of
+      approve-token). Also the account whose approvals the action withdraws.
+      It must not be the account that opens the pull requests it approves:
+      GitHub rejects self-approval.
+  approve-token:
+    required: true
+    description: >-
+      Token of bot-login, used only to post and dismiss approvals. A
+      fine-grained PAT with `Pull requests: write` is enough.
+  github-token:
+    required: false
+    default: ${{ github.token }}
+    description: >-
+      Token used for every read (the PR, its reviews, check runs, commits, the
+      policy file and the realm). Defaults to the workflow GITHUB_TOKEN; the
+      caller grants it `contents: read`, `pull-requests: write` and
+      `checks: read`.
+  merge-token:
+    required: false
+    default: ''
+    description: >-
+      Token used to merge, when a policy enables merging. Use a GitHub App
+      installation token: a merge made with GITHUB_TOKEN starts no workflow,
+      so release-please would never run after a promotion (MERGE-002). Leave
+      empty to never merge.
+  policy-token:
+    required: false
+    default: ''
+    description: >-
+      Token used to read policies and realms named by `extends:` or `realm:`
+      in another repository. Defaults to github-token, which can read public
+      repositories only. Pass a token with `contents: read` on the policy
+      repository when it is private.
+  policy-file:
+    required: false
+    default: '.strspc/pr-approval.yml'
+    description: >-
+      Path of the policy file. It is always read from the pull request's base
+      branch, never from its head (POLICY-001).
+  dry-run:
+    required: false
+    default: 'false'
+    description: >-
+      'true' to decide and report without approving, withdrawing or merging.
+  allow-no-checks:
+    required: false
+    default: 'false'
+    description: >-
+      'true' to approve a head that has no check runs at all. Default 'false':
+      a head with no checks waits.
+
+outputs:
+  decision:
+    description: "One of approved, merged, skip, dry-run or error."
+    value: ${{ steps.evaluate.outputs.decision }}
+  reason:
+    description: "One line explaining the decision, prefixed with the policy id and the rule IDs it applied."
+    value: ${{ steps.evaluate.outputs.reason }}
+  policy:
+    description: "Id of the policy that matched, or empty."
+    value: ${{ steps.evaluate.outputs.policy }}
+  rules:
+    description: "Comma-separated realm rule IDs the matching policy cites."
+    value: ${{ steps.evaluate.outputs.rules }}
+  merged:
+    description: "'true' when this run merged the pull request."
+    value: ${{ steps.evaluate.outputs.merged }}
+  pr-number:
+    description: "Number of the evaluated pull request, or empty."
+    value: ${{ steps.evaluate.outputs.pr_number }}
+  pr-url:
+    description: "URL of the evaluated pull request, or empty."
+    value: ${{ steps.evaluate.outputs.pr_url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Evaluate, approve and merge
+      id: evaluate
+      uses: actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71 # v9.0.0
+      env:
+        # Through env, never interpolated into the script: values can come from
+        # Actions variables, and a quote in one would otherwise inject code.
+        PR_APPROVAL_BOT_LOGIN: ${{ inputs.bot-login }}
+        PR_APPROVAL_POLICY_FILE: ${{ inputs.policy-file }}
+        PR_APPROVAL_DRY_RUN: ${{ inputs.dry-run }}
+        PR_APPROVAL_ALLOW_NO_CHECKS: ${{ inputs.allow-no-checks }}
+        PR_APPROVAL_APPROVE_TOKEN: ${{ inputs.approve-token }}
+        PR_APPROVAL_GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_APPROVAL_MERGE_TOKEN: ${{ inputs.merge-token }}
+        PR_APPROVAL_POLICY_TOKEN: ${{ inputs.policy-token }}
+        ACTION_PATH: ${{ github.action_path }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          // getOctokit is injected by github-script v9; do not redeclare it.
+          const decide = require(`${process.env.ACTION_PATH}/scripts/pr-approval/decide.js`);
+          const { makeApiClient } = decide;
+          const env = process.env;
+          const api = makeApiClient(getOctokit, env.PR_APPROVAL_GITHUB_TOKEN);
+          await decide({
+            github: api,
+            botGithub: makeApiClient(getOctokit, env.PR_APPROVAL_APPROVE_TOKEN),
+            // MERGE-002: a merge token equal to the read token (GITHUB_TOKEN by
+            // default) is no merge token at all.
+            mergeGithub: env.PR_APPROVAL_MERGE_TOKEN && env.PR_APPROVAL_MERGE_TOKEN !== env.PR_APPROVAL_GITHUB_TOKEN
+              ? makeApiClient(getOctokit, env.PR_APPROVAL_MERGE_TOKEN)
+              : null,
+            policyGithub: env.PR_APPROVAL_POLICY_TOKEN ? makeApiClient(getOctokit, env.PR_APPROVAL_POLICY_TOKEN) : api,
+            context,
+            core,
+          });

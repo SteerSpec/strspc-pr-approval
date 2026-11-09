@@ -1,0 +1,15 @@
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
+
+node_modules/
+coverage/
+.beads/issues.jsonl
+.strspc/cache/
+
+# Claude Code agent worktrees (keep .claude/settings.json tracked)
+.claude/worktrees/

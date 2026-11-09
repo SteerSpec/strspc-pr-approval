@@ -1,0 +1,15 @@
+# This repository's own policy: the SteerSpec preset, read from this same
+# branch, with merging switched on for release PRs (dogfooding MERGE-001..005).
+version: 1
+realm: ../rules
+extends:
+  - ../presets/steerspec.yml
+policies:
+  - id: release
+    kind: release
+    rules: [APPROVE-006, MERGE-001]
+    match: { base: main }
+    options:
+      author: steerspec-sync[bot]
+      source: develop
+    merge: { enabled: true, method: merge }

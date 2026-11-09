@@ -1,0 +1,70 @@
+{
+  "$schema": "./_schema/entity.v1.schema.json",
+  "entity": {
+    "id": "POLICY",
+    "title": "Policy resolution",
+    "description": "How the action finds, loads and trusts the policy that governs a pull request."
+  },
+  "rule_set": {
+    "version": "0.1.6",
+    "timestamp": "2026-11-09T17:58:12Z",
+    "hash": "blake3:a5529dd334c99157beb028151335eeb958159a3600f38aaf063a99873c3a0bc8"
+  },
+  "rules": [
+    {
+      "id": "POLICY-001",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST read the policy file from the base branch of the pull request, never from its head, so that a pull request cannot change the policy that decides it.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "POLICY-002",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST resolve an extends reference only when it names a tag or a full commit SHA, and MUST refuse a reference to a branch.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "POLICY-003",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST refuse a policy whose extends chain contains a cycle or is deeper than the documented limit.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "POLICY-004",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST refuse a policy file that does not validate against the published policy schema, and MUST then take no action on the pull request.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "POLICY-005",
+      "revision": 0,
+      "state": "D",
+      "body": "Each policy MUST cite at least one rule identifier of the referenced realm, and every review and log line the action writes for a decision MUST quote the cited identifiers.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "POLICY-006",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST apply the first policy, in file order after extends are merged, whose match conditions the pull request satisfies, and on a pull request no policy matches MUST take no action beyond withdrawing an approval of its own.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    }
+  ],
+  "notes": []
+}

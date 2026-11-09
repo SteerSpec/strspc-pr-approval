@@ -1,0 +1,61 @@
+{
+  "$schema": "./_schema/entity.v1.schema.json",
+  "entity": {
+    "id": "MERGE",
+    "title": "Merge decisions",
+    "description": "When the action may merge a pull request it approved, and how."
+  },
+  "rule_set": {
+    "version": "0.1.5",
+    "timestamp": "2026-11-09T17:14:16Z",
+    "hash": "blake3:7fac5945431628b4dd49ea1eefdec8491140fbe328898c75c9f8ea61aba302d5"
+  },
+  "rules": [
+    {
+      "id": "MERGE-001",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST NOT merge a pull request unless the matching policy enables merging, and merging MUST be disabled by default.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "MERGE-002",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST merge with the configured merge token and MUST NOT merge with the workflow GITHUB_TOKEN, because a merge by that token starts no workflow.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "MERGE-003",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST merge only the head commit it evaluated, and only when GitHub reports the pull request as cleanly mergeable.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "MERGE-004",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST use the merge method the policy names, or else the one the base branch rules allow, and MUST NOT merge when the two disagree.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "MERGE-005",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST NOT merge a release pull request while the source branch holds a commit the changelog would show.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    }
+  ],
+  "notes": []
+}

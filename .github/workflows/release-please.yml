@@ -1,0 +1,64 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint a GitHub App token
+        # steerspec-sync App rather than GITHUB_TOKEN or a PAT: its API commits
+        # are GitHub-signed (enterprise required_signatures, no manual re-sign)
+        # and the events it causes do start workflows. Release PRs target main,
+        # where ci.yml and auto-approve.yml do not run, so merging one stays a
+        # click unless this repo's own pr-approval policy opts in to merging.
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
+        with:
+          app-id: ${{ secrets.STEERSPEC_APP_ID }}
+          private-key: ${{ secrets.STEERSPEC_PRIVATE_KEY }}
+          # Scoped to this repository (the action's default) and to the two
+          # permissions release-please needs, matching the workflow permissions.
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          # Not the default GITHUB_TOKEN: its commits would still be signed, but
+          # no workflow would ever fire from the tags and PRs it creates.
+          token: ${{ steps.app.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          # Release from main. Without this, target-branch defaults to the repo
+          # default branch (develop), so release-please would process develop
+          # (and fail trying to tag it under develop's ruleset) instead of main.
+          target-branch: main
+
+      # Keep the moving major tag (e.g. v1) pointing at the latest release so
+      # Marketplace consumers can pin `@v1` and receive patches/features.
+      # Update the tag via the git refs API (not `git push`): the default
+      # GITHUB_TOKEN cannot push a ref whose commit touches .github/workflows/**
+      # without the (un-grantable) `workflows` permission, but the refs API can
+      # point a tag at an existing commit — which is how release-please itself
+      # tags releases.
+      - name: Update moving major tag
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          MAJOR: v${{ steps.release.outputs.major }}
+          SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          if gh api "repos/$REPO/git/ref/tags/$MAJOR" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$REPO/git/refs/tags/$MAJOR" -f sha="$SHA" -F force=true
+          else
+            gh api -X POST "repos/$REPO/git/refs" -f ref="refs/tags/$MAJOR" -f sha="$SHA"
+          fi

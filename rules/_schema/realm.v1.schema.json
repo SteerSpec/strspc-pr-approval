@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://steerspec.dev/schemas/realm/v1.json",
+  "x-steerspec-core-version": "1.24.0",
+  "title": "SteerSpec Realm Manifest Schema",
+  "description": "Schema for realm.json manifest files. Hand-maintained axiom.",
+  "type": "object",
+  "required": ["$schema", "realm"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "realm": {
+      "type": "object",
+      "required": ["id", "title", "version"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"
+        },
+        "language": {
+          "enum": ["en"],
+          "description": "The Realm's natural language as a BCP 47 tag (RLMMNFST-006). Top-level Realms only (RLM-022)."
+        },
+        "standards": {
+          "type": "array",
+          "minItems": 1,
+          "description": "External standards the Realm cites (STDREF-001). The uniqueness of each id is checked by lint (STDREF-003).",
+          "items": {
+            "type": "object",
+            "required": ["id", "relation"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*)+$"
+              },
+              "relation": {
+                "enum": ["implements", "derived_from"]
+              },
+              "version": {
+                "type": "string",
+                "minLength": 1
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
+              "realm": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*$",
+                "description": "The Standard Realm this reference links to, a dependency of the Realm tree (STDREF-017). Its version must equal that Realm's edition (STDREF-018), checked by lint."
+              },
+              "profile": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The claimed profile of the linked Standard Realm, allowed only with realm (STDREF-019) and declared by that Realm (STDREF-027), checked by lint."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "kind": {
+          "enum": ["standard"],
+          "description": "The Realm's kind (RLMMNFST-008). Absent means a code Realm (RLMMNFST-009)."
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1,
+          "description": "SPDX license identifier of the Realm's content (RLMMNFST-010). Required in a Standard Realm (STDRLM-003), checked by lint."
+        },
+        "attribution": {
+          "type": "object",
+          "required": ["text", "url"],
+          "description": "Attribution of the Realm's content (RLMMNFST-011). Required in a Standard Realm (STDRLM-015), checked by lint.",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "url": {
+              "type": "string",
+              "pattern": "^https?://[^\\s/?#]+[^\\s]*$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "edition": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The edition of the standard a Standard Realm transcribes (STDRLM-002)."
+        },
+        "profiles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Profile names a Standard Realm's Rules may declare, in order (STDRLM-004).",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "contributors": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Contributors of the Realm (CTRB-004). The provider list (CTRB-002), unique ids, their use in added_by (CTRB-005) and sub-realm inheritance (CTRB-006) are checked by lint.",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*:\\S+$",
+                "description": "Contributor identifier `<idp>:<subject>` (CTRB-001)."
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "minLength": 3,
+                "description": "Optional email address (CTRB-007)."
+              },
+              "github_id": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Numeric GitHub user ID, for `github` contributors (CTRB-008)."
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["realm_id", "version"],
+        "properties": {
+          "realm_id": { "type": "string" },
+          "version": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+          },
+          "source": {
+            "type": "string",
+            "description": "Fetch location for this dependency (e.g. github://owner/repo@version/path)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "sub_realms": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*$",
+            "description": "Single directory name satisfying the realm-id segment grammar."
+          },
+          "uniqueItems": true
+        },
+        { "type": "null" }
+      ],
+      "description": "Subdirectory names of child Realms (RLM-010). Null or absent if none."
+    },
+    "rule_identifier_format": {
+      "description": "Overrides of the RLIFRMT defaults (RLMMNFST-004). Every field is optional and falls back to its default. For a top-level Realm, null keeps all defaults; for a sub-realm, null means the parent's format applies (RLM-015). Affects rendering only (RLIFRMT-008).",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "brackets": {
+              "enum": ["(,)", "{,}", "[,]"],
+              "default": "[,]",
+              "description": "Opening and closing character pair (RLIFRMT-002)."
+            },
+            "euid_position": {
+              "enum": ["opening", "closing"],
+              "default": "opening",
+              "description": "Position of the Entity Unique Identifier (RLIFRMT-003); the Rule Set Unique Number takes the opposing position (RLIFRMT-004)."
+            },
+            "id_splitter": {
+              "enum": ["-", "_"],
+              "default": "-",
+              "description": "Separator between the Entity Unique Identifier and the Rule Set Unique Number (RLIFRMT-005)."
+            },
+            "revision_splitter": {
+              "enum": [".", "#"],
+              "default": ".",
+              "description": "Separator before the Rule Revision (RLIFRMT-006)."
+            },
+            "state_splitter": {
+              "enum": ["/", "\\", "|"],
+              "default": "/",
+              "description": "Separator before the Rule State (RLIFRMT-007)."
+            }
+          },
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ]
+    },
+    "notes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Realm Notes (RLMMNFST-012, NTE-029). A `ref` is required on an `exclusion` Note (NTE-034) and kept when the exclusion is withdrawn by retyping it to `reference` (NTE-035); no other Realm Note has one. These and sequential identifiers (NTE-030) are checked by lint.",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "content", "added_by", "added_at", "revision"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^REALM/\\d{3}$",
+            "description": "Realm Note identifier (NTE-030)."
+          },
+          "type": {
+            "enum": ["exclusion", "rationale", "clarification", "reference"],
+            "description": "Realm Note types (NTE-031)."
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[^:]+:\\S.*$",
+            "description": "The excluded clause, `<id>:<clause>`. Required on an `exclusion` (NTE-034), and kept on the `reference` an exclusion becomes when withdrawn (NTE-035)."
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          },
+          "added_by": {
+            "type": "string",
+            "minLength": 1
+          },
+          "added_at": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^blake3:[a-f0-9]{64}$",
+      "description": "Blake3 hash of the manifest without its `hash` field (RLMMNFST-013), recomputed on every change (RLMMNFST-014)."
+    }
+  },
+  "additionalProperties": false
+}

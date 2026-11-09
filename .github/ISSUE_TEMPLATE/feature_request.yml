@@ -1,0 +1,18 @@
+name: Feature request
+description: A new PR kind, match condition or merge behaviour.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The pull requests you still handle by hand
+      description: Their head/base branches, authors, titles and what you check before approving.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The rule you would want
+      description: Write it the way a realm rule reads ("The action MUST approve … only when …").
+    validations:
+      required: true

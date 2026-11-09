@@ -1,0 +1,115 @@
+{
+  "$schema": "./_schema/entity.v1.schema.json",
+  "entity": {
+    "id": "APPROVE",
+    "title": "Approval decisions",
+    "description": "When the action may approve a pull request, and when it must refuse or take an approval back."
+  },
+  "rule_set": {
+    "version": "0.1.11",
+    "timestamp": "2026-11-09T17:14:16Z",
+    "hash": "blake3:1523a5d7e4e552a46d79e1434b0cd09bcbe6e76653544e3afe662fd1432cfd52"
+  },
+  "rules": [
+    {
+      "id": "APPROVE-001",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST NOT approve a pull request whose head is in another repository, that is a draft, or that the approving account authored.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-002",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST NOT approve a pull request while any check on its head is unfinished or has concluded with anything other than success, neutral or skipped.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-003",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST re-read the head, base, title and draft state of a pull request before and after approving it, and MUST withdraw its approval when any of them changed.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-004",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST withdraw an earlier approval of its own on a different head before it evaluates a pull request.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-005",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST approve a promotion pull request only when its head is in this repository and is the tip of the head branch, its title is of type chore and is not marked breaking, its checks pass, and every commit came from a merged pull request into the head branch that, at its merge, had an approval of its final head from a reviewer with push access and no outstanding request for changes.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-006",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST approve a release-please pull request only when its head is in this repository and is the tip of the head branch, the configured release author wrote it and all its commits, every changed file is owned by release-please as read from its configuration at the base, its checks pass, and any configured source branch holds no commit the changelog would show.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-007",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST approve a release sync-back pull request only when the release author wrote it and every changed file is owned by release-please and has the same content as on the release branch.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-008",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST approve a rules pin pull request only when the configured bot wrote it, it changes only rules/realm.json, .strspc/config.yaml and files under rules/_schema/, and no newer pin pull request is open.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-009",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST approve a template sync pull request only when the configured bot wrote it, it carries the configured label, and no newer pull request for the same template is open.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-010",
+      "revision": 0,
+      "state": "D",
+      "body": "A policy MAY tighten the conditions of a built-in kind and MUST NOT be able to relax them.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-011",
+      "revision": 0,
+      "state": "D",
+      "body": "An evaluator veto MAY block an approval or downgrade a pull request to needing a human, and MUST NOT approve or merge a pull request.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-09",
+      "supersedes": null
+    }
+  ],
+  "notes": []
+}

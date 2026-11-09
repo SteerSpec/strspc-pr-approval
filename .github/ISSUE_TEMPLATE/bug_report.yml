@@ -1,0 +1,35 @@
+name: Bug report
+description: The action approved, merged or skipped a pull request it should not have.
+labels: [bug]
+body:
+  - type: input
+    id: reason
+    attributes:
+      label: Logged reason
+      description: The `reason` output of the run (and the rule IDs it quotes).
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Pull request kind
+      options: [promotion, release, sync-back, pin, template-sync, custom, none matched]
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: policy
+    attributes:
+      label: Policy file
+      description: Your `.strspc/pr-approval.yml` (remove anything private).
+      render: yaml
+  - type: input
+    id: version
+    attributes:
+      label: Action ref
+      placeholder: SteerSpec/strspc-pr-approval@v1

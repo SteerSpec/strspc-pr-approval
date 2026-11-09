@@ -1,0 +1,31 @@
+{
+  "name": "@steerspec/pr-approval",
+  "version": "0.0.0",
+  "private": true,
+  "description": "GitHub Action that approves, and optionally merges, promotion, release and bot housekeeping pull requests under a policy that cites a SteerSpec rules realm",
+  "license": "Apache-2.0",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test scripts/pr-approval/*.test.js scripts/pr-approval/kinds/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-exclude=\"**/*.test.js\" --test-coverage-lines=80 --test-coverage-branches=70 scripts/pr-approval/*.test.js scripts/pr-approval/kinds/*.test.js",
+    "lint:workflows": "actionlint .github/workflows/*.yml templates/*.yml",
+    "lint:rules": "strspc lint rules/",
+    "lint": "npm run lint:workflows && npm run lint:rules",
+    "prepare": "husky"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@actions/github": "9.1.0",
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
+    "@octokit/plugin-retry": "8.1.0",
+    "husky": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SteerSpec/strspc-pr-approval.git"
+  }
+}

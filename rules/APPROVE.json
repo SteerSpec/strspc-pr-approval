@@ -6,9 +6,9 @@
     "description": "When the action may approve a pull request, and when it must refuse or take an approval back."
   },
   "rule_set": {
-    "version": "0.1.11",
-    "timestamp": "2026-11-09T17:14:16Z",
-    "hash": "blake3:1523a5d7e4e552a46d79e1434b0cd09bcbe6e76653544e3afe662fd1432cfd52"
+    "version": "0.1.12",
+    "timestamp": "2026-11-09T17:35:08Z",
+    "hash": "blake3:780502a2721ce1bd3b24c00da0384dda24ec40f65d9c3feb6830d43e3d9191b6"
   },
   "rules": [
     {
@@ -22,9 +22,9 @@
     },
     {
       "id": "APPROVE-002",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "The action MUST NOT approve a pull request while any check on its head is unfinished or has concluded with anything other than success, neutral or skipped.",
+      "body": "The action MUST NOT approve a pull request while any check on its head is unfinished or has concluded with anything other than success, neutral, skipped, cancelled or stale, ignoring the runs of its own job.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null

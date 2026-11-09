@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SteerSpec/strspc-pr-approval/schema/pr-approval.v1.json",
+  "title": "strspc-pr-approval policy file",
+  "description": "Editor schema for .strspc/pr-approval.yml. The action validates the same shape itself (scripts/pr-approval/policy.js); kind options are checked by each kind.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version"],
+  "properties": {
+    "version": { "const": 1 },
+    "realm": {
+      "type": "string",
+      "description": "Realm whose rule IDs the policies cite: github://Owner/repo@<tag|sha>/path or a path relative to this file. Required when the file declares policies."
+    },
+    "extends": {
+      "type": "array",
+      "maxItems": 5,
+      "items": { "type": "string", "description": "github://Owner/repo@<tag|sha>/path.yml or a relative path. Branch refs are refused." }
+    },
+    "policies": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/policy" }
+    }
+  },
+  "$defs": {
+    "globs": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      ]
+    },
+    "strings": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "rules"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+        "kind": { "enum": ["promotion", "release", "sync-back", "pin", "template-sync", "custom"] },
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^(?:[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9]*)*:)?[A-Za-z0-9]{3,18}-\\d{3,}$" }
+        },
+        "description": { "type": "string" },
+        "match": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "base": { "$ref": "#/$defs/globs" },
+            "head": { "$ref": "#/$defs/globs" },
+            "authors": { "$ref": "#/$defs/strings" },
+            "title": { "type": "string", "maxLength": 200, "description": "Regular expression (Unicode) the title must match." },
+            "labels": { "$ref": "#/$defs/strings" }
+          }
+        },
+        "require": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "checks": { "$ref": "#/$defs/strings" },
+            "paths": { "$ref": "#/$defs/strings" },
+            "forbid-paths": { "$ref": "#/$defs/strings" },
+            "max-files": { "type": "integer", "minimum": 0 },
+            "max-additions": { "type": "integer", "minimum": 0 },
+            "max-deletions": { "type": "integer", "minimum": 0 },
+            "no-labels": { "$ref": "#/$defs/strings" }
+          }
+        },
+        "options": { "type": "object" },
+        "approve": { "type": "boolean", "default": true },
+        "merge": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "method": { "enum": ["merge", "squash", "rebase"] }
+          }
+        }
+      }
+    }
+  }
+}

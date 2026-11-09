@@ -1,0 +1,107 @@
+name: PR Approval
+
+# Copy this file to .github/workflows/pr-approval.yml in your repository, then:
+#   1. Add .strspc/pr-approval.yml on every branch PRs target (see docs/usage.md),
+#      or extend a central policy from it.
+#   2. Set the variables and secrets named below.
+#
+# WHAT DECIDES IS THE POLICY FILE, not this workflow: it is read from the PR's
+# base branch, so a PR can never change the rules that judge it. This workflow
+# only wires events and tokens.
+#
+# Variables (org level, overridable per repo; `gh variable set NAME --org <org>`):
+#   STRSPC_PR_APPROVAL_BOT_LOGIN  login of the approving account (required)
+#   STRSPC_PR_APPROVAL_DRY_RUN    'true' to report without writing (start here)
+#   STRSPC_PR_APPROVAL_MERGE      'true' to mint the App token merges need
+# Secrets:
+#   BOT_GITHUB_TOKEN              PAT of the approving account (Pull requests: write)
+#   STEERSPEC_APP_ID / STEERSPEC_PRIVATE_KEY   GitHub App used to merge (only with MERGE)
+
+on:
+  # SECURITY: pull_request_target, NOT pull_request. For a same-repo PR the
+  # pull_request event runs the workflow from the PR's head with secrets in
+  # scope; pull_request_target runs the definition from the default branch.
+  # The usual footgun (checking out and running PR code with secrets) does not
+  # apply: this workflow checks nothing out. If you add a checkout, stop.
+  pull_request_target:
+    types: [opened, ready_for_review, synchronize, reopened, edited, labeled, unlabeled]
+  # Re-evaluates after a human review (a change request, a dismissal).
+  pull_request_review:
+    types: [submitted, dismissed]
+  # Checks posted by third-party apps. Checks made by your own Actions
+  # workflows do NOT raise check_run for other workflows; see workflow_run.
+  check_run:
+    types: [completed]
+  # REQUIRED IF YOUR CI IS GITHUB ACTIONS: list every workflow that gates PRs,
+  # by its `name:`. Whichever finishes last is the run that sees every check
+  # complete, so a workflow left out is a PR that is never re-evaluated.
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+
+jobs:
+  pr-approval:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: read
+    concurrency:
+      group: >-
+        pr-approval-${{ github.repository }}-${{
+          github.event.pull_request.number ||
+          github.event.check_run.pull_requests[0].number ||
+          github.event.workflow_run.pull_requests[0].number ||
+          github.run_id
+        }}
+      cancel-in-progress: true
+    # The fork guard is REQUIRED: under pull_request_target a fork PR would
+    # otherwise run with your secrets. The actor guard stops the bot's own
+    # review from re-triggering this job; keep it identical to bot-login below.
+    # Every workflow_run conclusion but skipped re-enters: a check that fails on
+    # an approved head must reach the action so it can withdraw the approval.
+    if: >-
+      (
+        (
+          github.event_name == 'pull_request_target' ||
+          (
+            github.event_name == 'pull_request_review' &&
+            github.actor != vars.STRSPC_PR_APPROVAL_BOT_LOGIN
+          )
+        ) &&
+        github.event.pull_request.draft == false &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      ) || (
+        github.event_name == 'check_run' &&
+        github.event.check_run.name != 'pr-approval' &&
+        github.event.check_run.pull_requests[0] != null
+      ) || (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion != 'skipped' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.pull_requests[0] != null
+      )
+    steps:
+      # The merge token. A GitHub App, not GITHUB_TOKEN: a merge made with
+      # GITHUB_TOKEN starts no workflow, so release-please would never run after
+      # a promotion. Scoped to this repository and to what a merge needs.
+      - name: Mint the merge token
+        id: app
+        if: vars.STRSPC_PR_APPROVAL_MERGE == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.STEERSPEC_APP_ID }}
+          private-key: ${{ secrets.STEERSPEC_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      # @v1 tracks the latest v1.x release.
+      - uses: SteerSpec/strspc-pr-approval@v1
+        with:
+          bot-login: ${{ vars.STRSPC_PR_APPROVAL_BOT_LOGIN }}
+          approve-token: ${{ secrets.BOT_GITHUB_TOKEN }}
+          merge-token: ${{ steps.app.outputs.token }}
+          dry-run: ${{ vars.STRSPC_PR_APPROVAL_DRY_RUN }}
+          allow-no-checks: ${{ vars.STRSPC_PR_APPROVAL_ALLOW_NO_CHECKS }}
+          # A private central policy repository needs its own read token:
+          # policy-token: ${{ secrets.POLICY_READ_TOKEN }}

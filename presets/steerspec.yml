@@ -1,0 +1,49 @@
+# SteerSpec organisation policy. Consumers extend it, pinned to a tag:
+#
+#   version: 1
+#   extends:
+#     - github://SteerSpec/strspc-pr-approval@v1/presets/steerspec.yml
+#
+# and override a policy by redeclaring its id (the local one replaces it).
+# Merging is off everywhere here; a repository opts in by overriding a policy
+# with `merge: { enabled: true }`.
+version: 1
+# Relative, so the realm is read at the same tag as this file.
+realm: ../rules
+policies:
+  # develop -> main, every commit from an approved PR.
+  - id: promotion
+    kind: promotion
+    rules: [APPROVE-005]
+    match: { head: develop, base: main }
+
+  # release-please PR into main, nothing visible left unpromoted on develop.
+  # A repository without a develop branch overrides this without `source`.
+  - id: release
+    kind: release
+    rules: [APPROVE-006]
+    match: { base: main }
+    options:
+      author: steerspec-sync[bot]
+      source: develop
+
+  # Release files copied back from main to develop after a release.
+  - id: sync-back
+    kind: sync-back
+    rules: [APPROVE-007]
+    options:
+      author: steerspec-sync[bot]
+
+  # chore(rules): pin dev.steerspec.core to X, opened by strspc-rules.
+  - id: core-pin
+    kind: pin
+    rules: [APPROVE-008]
+    options:
+      author: steerspec-sync[bot]
+
+  # steerspec-sync/<template>/<version>, opened by strspc-sync.
+  - id: template-sync
+    kind: template-sync
+    rules: [APPROVE-009]
+    options:
+      author: steerspec-sync[bot]

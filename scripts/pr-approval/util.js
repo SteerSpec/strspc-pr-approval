@@ -27,6 +27,12 @@ const CHECK_OK_CONCLUSIONS = ['success', 'neutral', 'skipped', 'cancelled', 'sta
 const isFailedCheck = (cr) =>
   cr.status === 'completed' && !CHECK_OK_CONCLUSIONS.includes(cr.conclusion);
 
+// Deduping by (name, app) means a later run with the same name hides an
+// earlier failure, so a workflow that can run from the PR head could mask a
+// red check. Every kind closes that by proving who made the head's commits
+// (the bot, or merged approved PRs, or match.authors for custom), so no
+// unreviewed workflow file reaches the head. Keep that true for new kinds.
+//
 // Check runs for a SHA, without this workflow's own run or any run of this
 // job (a sibling cancelled by the concurrency group is not CI), deduped by
 // (name, app) keeping the latest attempt.

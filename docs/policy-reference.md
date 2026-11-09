@@ -64,7 +64,9 @@ Conditions on top of the kind's own checks. They can only refuse (APPROVE-010).
 ## Kinds
 
 Every kind first passes the universal guards: same-repository head, not draft, not authored by the
-approving account, every check on the head green (APPROVE-001..004).
+approving account, every check on the head green (APPROVE-001..004). The action only ever withdraws
+approvals it gave itself (they carry a marker with the base they were given for), so a retargeted PR
+loses its approval and another tool approving as the same account is never touched.
 
 | Kind | Default match | Options | Proves (realm rule) |
 |---|---|---|---|
@@ -73,7 +75,7 @@ approving account, every check on the head green (APPROVE-001..004).
 | `sync-back` | head `chore/sync-release-*`, base `develop`, author | `author` (required), `release-branch` (default `main`) | every commit by the author; every file release-please-owned and identical to the release branch (APPROVE-007) |
 | `pin` | head `chore/core-*`, author | `author` (required), `files` (narrows) | files within `rules/realm.json`, `.strspc/config.yaml`, `rules/_schema/**`; no newer pin PR open (APPROVE-008) |
 | `template-sync` | head `steerspec-sync/*/*`, author, label | `author` (required), `label` (default `steerspec-sync`), `paths` (narrows) | label present; no newer PR for the same template open (APPROVE-009) |
-| `custom` | — (must set `match.base` and `match.authors`) | — | nothing beyond the guards, so it needs at least one `require` condition |
+| `custom` | — (must set `match.base` and `match.authors`) | — | every commit is a verified commit by one of `match.authors`; needs `require.paths` or `require.max-files` (a check name alone bounds nothing: a PR that adds a workflow can post any check) |
 
 ## merge
 

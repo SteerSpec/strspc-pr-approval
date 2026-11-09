@@ -6,9 +6,9 @@
     "description": "How the action finds, loads and trusts the policy that governs a pull request."
   },
   "rule_set": {
-    "version": "0.1.6",
-    "timestamp": "2026-11-09T17:14:16Z",
-    "hash": "blake3:617dbc525235e36c88190a4b185098e1685093f05e30a52843243627e7c8b454"
+    "version": "0.1.7",
+    "timestamp": "2026-11-09T17:50:56Z",
+    "hash": "blake3:a5bfe03f83380e866d6a92e102096385bf895f05922f3d65566fd26bafad3940"
   },
   "rules": [
     {
@@ -58,9 +58,9 @@
     },
     {
       "id": "POLICY-006",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "The action MUST apply the first policy, in file order after extends are merged, whose match conditions the pull request satisfies, and MUST take no action on a pull request no policy matches.",
+      "body": "The action MUST apply the first policy, in file order after extends are merged, whose match conditions the pull request satisfies, and on a pull request no policy matches MUST take no action beyond withdrawing an approval of its own.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null

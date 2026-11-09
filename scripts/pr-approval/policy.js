@@ -190,8 +190,8 @@ function validatePolicyFile(doc, where, kinds) {
     }
     // ...and bound what the diff may contain: a label condition alone restricts nothing.
     if (p.kind === 'custom' && !(isPlainObject(p.require) &&
-        ['paths', 'max-files', 'checks'].some((k) => k in p.require))) {
-      errors.push(`${w}.require: kind custom needs at least one of paths, max-files or checks`);
+        ['paths', 'max-files'].some((k) => k in p.require))) {
+      errors.push(`${w}.require: kind custom needs paths or max-files`);
     }
     if ('require' in p) validateRequire(p.require, `${w}.require`, errors);
     if ('approve' in p && typeof p.approve !== 'boolean') errors.push(`${w}.approve: must be true or false`);

@@ -9,7 +9,7 @@ const kindsPath = require.resolve('./kinds/index.js');
 require.cache[kindsPath] = { id: kindsPath, filename: kindsPath, loaded: true, exports: {} };
 const decide = require('./decide.js');
 
-const { decideInner, MARKER } = decide;
+const { decideInner, MARKER, marker } = decide;
 
 const BOT = 'approver-bot';
 const HEAD = 'a1'.repeat(20);
@@ -178,7 +178,7 @@ async function run(o = {}) {
   return { ...h, result };
 }
 
-const ourApproval = (id, commit_id) => ({ id, user: { login: BOT }, state: 'APPROVED', commit_id });
+const ourApproval = (id, commit_id, base = 'main') => ({ id, user: { login: BOT }, state: 'APPROVED', commit_id, body: `ok\n\n${marker(base)}` });
 const assertNoWrites = (h) => {
   assert.equal(h.calls.createReview.length, 0, 'createReview');
   assert.equal(h.calls.dismissReview.length, 0, 'dismissReview');
@@ -322,11 +322,17 @@ test('POLICY-005: a policy citing a withdrawn rule fails the job', async () => {
   assertNoWrites(h);
 });
 
-test('POLICY-006: no matching policy means no action', async () => {
-  const h = await run({ pr: { head: { ...basePr().head, ref: 'feature/x' } }, reviews: [ourApproval(1, OLD)] });
-  assert.deepEqual([h.result.decision, h.result.reason], ['skip', 'no policy matches this PR']);
-  assert.equal(h.core.outputs.policy, '');
-  assertNoWrites(h);
+test('POLICY-006: no matching policy means no action beyond withdrawing an approval of ours', async () => {
+  const pr = { head: { ...basePr().head, ref: 'feature/x' } };
+  const clean = await run({ pr });
+  assert.deepEqual([clean.result.decision, clean.result.reason], ['skip', 'no policy matches this PR']);
+  assert.equal(clean.core.outputs.policy, '');
+  assertNoWrites(clean);
+  // A PR this action approved, then retargeted or renamed out of every policy.
+  const h = await run({ pr, reviews: [ourApproval(1, OLD)] });
+  assert.equal(h.result.reason, 'no policy matches this PR');
+  assert.equal(h.calls.createReview.length, 0);
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [1]);
 });
 
 test('POLICY-006: the first matching policy applies', async () => {
@@ -550,7 +556,8 @@ test('APPROVE-003 + POLICY-005: approves the evaluated head, citing the policy a
   assert.equal(review.event, 'APPROVE');
   assert.equal(review.pull_number, 5);
   assert.match(review.body, /^Approved under policy `release` \(APPROVE-006, MERGE-001\): release 1\.2\.0\./);
-  assert.ok(review.body.endsWith(MARKER));
+  assert.ok(review.body.includes(MARKER));
+  assert.ok(review.body.endsWith(marker('main')));
   // Re-read before and after approving.
   assert.equal(h.calls.pullsGet.length, 2);
   assert.equal(h.calls.compare, 2);
@@ -683,4 +690,21 @@ test('decide() reports an error without a request or status', async () => {
     context: { repo: { owner: 'o', repo: 'r' }, payload: { check_run: { pull_requests: [{ number: 5 }] } } },
   });
   assert.equal(result.reason, 'evaluation failed: boom');
+});
+
+
+// --- marker scoping and retargeting ---------------------------------------------
+
+test('APPROVE-004: an approval given for another base is withdrawn (retargeted PR)', async () => {
+  const h = await run({ reviews: [ourApproval(81, HEAD, 'develop')] });
+  assert.equal(h.calls.dismissReview.length, 1);
+  assert.equal(h.calls.dismissReview[0].review_id, 81);
+  assert.match(h.calls.dismissReview[0].message, /new head or base/);
+});
+
+test('approvals by the same account without our marker (strspc-pr-review) are never dismissed', async () => {
+  const foreign = { id: 91, user: { login: BOT }, state: 'APPROVED', commit_id: 'old', body: 'Auto-approved: copilot-clean.' };
+  const h = await run({ reviews: [foreign], checkRuns: [{ id: 1, name: 'ci', app: { id: 1 }, status: 'completed', conclusion: 'failure' }] });
+  assert.match(h.result.reason, /failing check/);
+  assert.equal(h.calls.dismissReview.length, 0);
 });

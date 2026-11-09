@@ -168,11 +168,13 @@ test('POLICY-004: kind custom needs match.base and match.authors', () => {
   assert.deepEqual(errorsOf(file([pol('a', { kind: 'custom', require: req, match: { base: 'main', authors: ['bot'] } })])), []);
 });
 
-test('APPROVE-010: kind custom needs a require bound on paths, max-files or checks', () => {
+test('APPROVE-010: kind custom needs a require bound on paths or max-files', () => {
   const match = { base: 'main', authors: ['bot'] };
-  expectError(file([pol('a', { kind: 'custom', match })]), /require: kind custom needs at least one of paths, max-files or checks/);
-  expectError(file([pol('a', { kind: 'custom', match, require: { 'no-labels': ['hold'] } })]), /kind custom needs at least one of/);
-  for (const require of [{ paths: ['a'] }, { 'max-files': 1 }, { checks: ['c'] }]) {
+  expectError(file([pol('a', { kind: 'custom', match })]), /require: kind custom needs paths or max-files/);
+  expectError(file([pol('a', { kind: 'custom', match, require: { 'no-labels': ['hold'] } })]), /kind custom needs paths or max-files/);
+  // A check name proves nothing: a PR that can add a workflow can post any check.
+  expectError(file([pol('a', { kind: 'custom', match, require: { checks: ['c'] } })]), /kind custom needs paths or max-files/);
+  for (const require of [{ paths: ['a'] }, { 'max-files': 1 }]) {
     assert.deepEqual(errorsOf(file([pol('a', { kind: 'custom', match, require })])), [], JSON.stringify(require));
   }
 });

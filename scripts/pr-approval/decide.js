@@ -21,7 +21,15 @@ const {
 } = require('./util.js');
 
 const DEFAULT_POLICY_FILE = '.strspc/pr-approval.yml';
-const MARKER = '<!-- strspc-pr-approval -->';
+// Every approval carries the marker with the base it was given for, so a
+// retargeted PR loses it (APPROVE-004) and only our own approvals are touched.
+const MARKER_PREFIX = '<!-- strspc-pr-approval';
+const marker = (base) => `${MARKER_PREFIX} base=${encodeURIComponent(base)} -->`;
+const MARKER = MARKER_PREFIX;
+function markerBase(review) {
+  const m = /<!-- strspc-pr-approval base=(\S+) -->/.exec(String(review.body || ''));
+  return m ? decodeURIComponent(m[1]) : null;
+}
 
 const truthy = (v) => String(v || '').trim().toLowerCase() === 'true';
 
@@ -155,34 +163,16 @@ async function decideInner({
   }
   if (pr.user && pr.user.login === cfg.botLogin) return finish('skip', 'PR author is the approving account');
 
-  // POLICY-001: from the base branch, never the head.
-  let loaded;
-  try {
-    loaded = loadPolicyFn ? await loadPolicyFn() : await loadPolicy({
-      github,
-      policyGithub,
-      kinds,
-      root: { owner, repo, ref: pr.base.ref, path: cfg.policyFile.replace(/^\.?\//, ''), remote: false },
-    });
-  } catch (err) {
-    if (err instanceof PolicyError) return fail(err.message); // POLICY-004: no action
-    throw err;
-  }
-  if (!loaded) return finish('skip', `no ${cfg.policyFile} on ${pr.base.ref}`);
-
-  policy = matchPolicy(loaded.policies, pr, kinds);
-  if (!policy) return finish('skip', 'no policy matches this PR'); // POLICY-006
-  const kind = kinds[policy.kind];
-  const options = policy.options || {};
-  if (policy.approve === false) return finish('skip', 'the matching policy approves nothing');
-
   // -- approvals of ours ------------------------------------------------------
   let reviews = null;
   const loadReviews = async () => {
     reviews = await github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number: prNumber, per_page: 100 });
     return reviews;
   };
-  const ourApprovals = (list) => list.filter((r) => r.user && r.user.login === cfg.botLogin && r.state === 'APPROVED');
+  // Ours = the approving account AND our marker. strspc-pr-review may approve
+  // as the same account; its approvals are never this action's to dismiss.
+  const ourApprovals = (list) => list.filter((r) => r.user && r.user.login === cfg.botLogin &&
+    r.state === 'APPROVED' && String(r.body || '').includes(MARKER_PREFIX));
   // Withdraws every approval of ours `which` selects. An approval that may
   // still stand after a failure is an error, never a skip.
   const withdraw = async (which, message) => {
@@ -203,11 +193,35 @@ async function decideInner({
     }
     return failures.length ? fail(`could not withdraw approval(s): ${failures.join('; ')}`) : null;
   };
-  // A refusal under a matched policy takes back any approval of ours.
+  // A refusal, or a PR this action no longer governs (retargeted to a base with
+  // no policy, or one no policy matches), takes back any approval of ours.
   const refuse = async (reason) => {
     const failed = await withdraw(() => true, `Withdrawn: ${tag(reason)}.`);
     return failed || finish('skip', reason);
   };
+
+
+  // POLICY-001: from the base branch, never the head.
+  let loaded;
+  try {
+    loaded = loadPolicyFn ? await loadPolicyFn() : await loadPolicy({
+      github,
+      policyGithub,
+      kinds,
+      root: { owner, repo, ref: pr.base.ref, path: cfg.policyFile.replace(/^\.?\//, ''), remote: false },
+    });
+  } catch (err) {
+    if (err instanceof PolicyError) return fail(err.message); // POLICY-004: no action
+    throw err;
+  }
+  if (!loaded) return refuse(`no ${cfg.policyFile} on ${pr.base.ref}`);
+
+  policy = matchPolicy(loaded.policies, pr, kinds);
+  if (!policy) return refuse('no policy matches this PR'); // POLICY-006
+  const kind = kinds[policy.kind];
+  const options = policy.options || {};
+  if (policy.approve === false) return refuse('the matching policy approves nothing');
+
 
   const headSha = pr.head.sha;
 
@@ -220,8 +234,8 @@ async function decideInner({
 
   // APPROVE-004
   {
-    const failed = await withdraw((r) => r.commit_id !== headSha,
-      `Withdrawn: ${headSha.slice(0, 8)} is a new head, so the approval has to be earned again.`);
+    const failed = await withdraw((r) => r.commit_id !== headSha || markerBase(r) !== pr.base.ref,
+      `Withdrawn: ${headSha.slice(0, 8)} on ${pr.base.ref} is a new head or base, so the approval has to be earned again.`);
     if (failed) return failed;
   }
 
@@ -297,7 +311,7 @@ async function decideInner({
   reviews = reviews || await loadReviews();
   const alreadyApproved = ourApprovals(reviews).some((r) => r.commit_id === headSha);
   if (!alreadyApproved) {
-    const body = `Approved under policy \`${policy.id}\` (${policy.rules.join(', ')}): ${summary}.\n\n${MARKER}`;
+    const body = `Approved under policy \`${policy.id}\` (${policy.rules.join(', ')}): ${summary}.\n\n${marker(pr.base.ref)}`;
     let created;
     try {
       ({ data: created } = await botGithub.rest.pulls.createReview({
@@ -340,3 +354,5 @@ module.exports.resolvePr = resolvePr;
 module.exports.makeApiClient = makeApiClient;
 module.exports.DEFAULT_POLICY_FILE = DEFAULT_POLICY_FILE;
 module.exports.MARKER = MARKER;
+module.exports.marker = marker;
+module.exports.markerBase = markerBase;

@@ -6,9 +6,9 @@
     "description": "When the action may approve a pull request, and when it must refuse or take an approval back."
   },
   "rule_set": {
-    "version": "0.1.12",
-    "timestamp": "2026-11-09T17:35:08Z",
-    "hash": "blake3:780502a2721ce1bd3b24c00da0384dda24ec40f65d9c3feb6830d43e3d9191b6"
+    "version": "0.1.13",
+    "timestamp": "2026-11-09T17:50:56Z",
+    "hash": "blake3:583a6b925ec8cf4edbfa8d39620bb36a29a6da56a23dbc839bb8a6f3c2161728"
   },
   "rules": [
     {
@@ -40,9 +40,9 @@
     },
     {
       "id": "APPROVE-004",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "The action MUST withdraw an earlier approval of its own on a different head before it evaluates a pull request.",
+      "body": "The action MUST withdraw an earlier approval of its own given for a different head or a different base before it evaluates a pull request, and MUST NOT withdraw an approval it did not give.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null

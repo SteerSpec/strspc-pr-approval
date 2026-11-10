@@ -14,7 +14,9 @@ name: PR Approval
 #   STRSPC_PR_APPROVAL_DRY_RUN    'true' to report without writing (start here)
 #   STRSPC_PR_APPROVAL_MERGE      'true' to mint the App token merges need
 # Secrets:
-#   BOT_GITHUB_TOKEN              PAT of the approving account (Pull requests: write)
+#   PR_APPROVAL_BOT_TOKEN         PAT of the approving account (Pull requests: write).
+#                                 Prefer an account and secret of its own, not the
+#                                 ones strspc-pr-review approves with (docs/usage.md)
 #   STEERSPEC_APP_ID / STEERSPEC_PRIVATE_KEY   GitHub App used to merge (only with MERGE)
 
 on:
@@ -101,7 +103,7 @@ jobs:
       - uses: SteerSpec/strspc-pr-approval@v1
         with:
           bot-login: ${{ vars.STRSPC_PR_APPROVAL_BOT_LOGIN }}
-          approve-token: ${{ secrets.BOT_GITHUB_TOKEN }}
+          approve-token: ${{ secrets.PR_APPROVAL_BOT_TOKEN }}
           merge-token: ${{ steps.app.outputs.token }}
           dry-run: ${{ vars.STRSPC_PR_APPROVAL_DRY_RUN }}
           allow-no-checks: ${{ vars.STRSPC_PR_APPROVAL_ALLOW_NO_CHECKS }}

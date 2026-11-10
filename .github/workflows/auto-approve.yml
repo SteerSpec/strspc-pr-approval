@@ -171,9 +171,10 @@ jobs:
         github.event.workflow_run.pull_requests[0] != null
       )
     steps:
-      # @v1 tracks the latest v1.x release. Pin an exact @vX.Y.Z if you prefer
-      # to upgrade manually.
-      - uses: SteerSpec/strspc-pr-review@v1
+      # Pinned to a commit SHA like every other action here: this step runs
+      # with the org-wide BOT_TOKEN, so a moved tag must not change its code.
+      # Bump the SHA and the version comment together when upgrading.
+      - uses: SteerSpec/strspc-pr-review@dc4f013b48eee24047f1d2150dd1d18823f6882d # v1.11.0
         with:
           # Required: GitHub login of the bot account that will approve PRs.
           # Keep this expression identical to the loop guard in the if: above.

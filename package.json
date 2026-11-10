@@ -1,6 +1,6 @@
 {
   "name": "@steerspec/pr-approval",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "GitHub Action that approves, and optionally merges, promotion, release and bot housekeeping pull requests under a policy that cites a SteerSpec rules realm",
   "license": "Apache-2.0",

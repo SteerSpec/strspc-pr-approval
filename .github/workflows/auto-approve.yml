@@ -1,0 +1,266 @@
+name: PR Auto-Approve (Copilot)
+
+# This IS the live workflow for this repo -- not a template to copy anywhere.
+#
+# Generated from templates/pr-auto-approve.yml in SteerSpec/strspc-pr-review
+# (v1.11.0) with only the per-repo values changed: secrets.BOT_TOKEN and the
+# workflow_run list. Settings come from STRSPC_PR_AUTO_APPROVE_* variables, so
+# policy changes need no edit here; re-sync with the pr-caller-sync skill.
+#
+# CONFIGURATION LIVES IN ACTIONS VARIABLES, not in this file. Every setting
+# below reads vars.STRSPC_PR_AUTO_APPROVE_<INPUT>. Set them once at the
+# organization level (Settings → Secrets and variables → Actions → Variables,
+# or `gh variable set NAME --org <org>`); a repository variable with the same
+# name overrides the org value as a whole. An unset variable reaches the action
+# as an empty string, which means "use the action's default". Org variables
+# have a repository-access policy: one not granted to this repo reads as unset.
+# A literal written in `with:` below still wins over both, EXCEPT base-branch:
+# the job if: reads the variable too, so a literal there must be mirrored in
+# the if: (see BASE BRANCH below) or its PRs are skipped before the action runs.
+
+on:
+  # SECURITY: pull_request_target, NOT pull_request. For a same-repo PR the
+  # `pull_request` event runs the workflow definition from the PR's HEAD commit
+  # with your secrets in scope, so anyone who can push a branch could edit this
+  # file in their own PR and exfiltrate the bot token. `pull_request_target`
+  # instead "runs in the context of the default branch of the base repository",
+  # so the definition is never PR-controlled. Note "default branch", not "base
+  # branch": they differ whenever a PR targets a non-default branch.
+  #
+  # The usual pull_request_target footgun does not apply here: it is dangerous
+  # when you check out and execute PR code with secrets in scope, and this
+  # workflow never checks anything out — the action only calls the GitHub API.
+  # If you add a checkout step, stop and reconsider.
+  #
+  # It also makes the fork guard in the if: below load-bearing rather than
+  # belt-and-braces. Do not remove it.
+  #
+  # No `branches:` filter: `on:` cannot read `vars`, and the base branch now
+  # comes from vars.STRSPC_PR_AUTO_APPROVE_BASE_BRANCH. The job `if:` below
+  # pre-filters on it and the action enforces the exact set.
+  pull_request_target:
+    types: [opened, ready_for_review, synchronize, reopened, edited]
+  # Safe as-is: pull_request_review "will only trigger a workflow run if the
+  # workflow file exists on the default branch", so the definition is not
+  # PR-controlled and this is not an injection path. Its GITHUB_REF is still the
+  # PR merge ref, so a checkout step here WOULD pull PR code — do not add one.
+  pull_request_review:
+    types: [submitted]
+  # check_run catches checks posted by third-party apps (external CI services).
+  # It does NOT fire for checks produced by your own GitHub Actions workflows:
+  # Actions creates those with GITHUB_TOKEN, and GITHUB_TOKEN-generated events
+  # never start a new workflow run (GitHub's recursion guard).
+  check_run:
+    types: [completed]
+  # REQUIRED IF YOUR CI IS GITHUB ACTIONS — see the note above. Without this,
+  # a PR whose Copilot review arrives BEFORE CI finishes is never re-evaluated:
+  # the review-triggered run skips with "check still running" and nothing ever
+  # follows, so the PR silently never gets approved.
+  #
+  # List EVERY workflow that gates PRs, by its `name:` value — not just the
+  # obvious one. Whichever finishes LAST is the run that sees all other checks
+  # complete, so a workflow you left out is a PR that never gets re-evaluated.
+  #
+  # Find them by reading .github/workflows/, NOT by watching what ran on the PR
+  # that adds this file: that PR usually touches only .github/workflows/, so any
+  # path-filtered workflow stays silent on it and looks like it doesn't exist.
+  #
+  #   find .github/workflows -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) |
+  #     while read -r f; do
+  #       grep -q 'pull_request' "$f" && echo "$f — $(grep -m1 '^name:' "$f")"
+  #     done
+  #
+  # Both extensions: Actions accepts .yml and .yaml, and matching only one would
+  # skip a gating workflow — the omission this comment is warning about. find
+  # rather than a shell glob because an unmatched glob is a hard error in zsh.
+  #
+  # Then check each one's `on:` block and drop the pull_request_target false
+  # positives. Watch for the array form (on: [push, pull_request]) and for path
+  # filters — a workflow filtered to src/** runs on every real PR and none of
+  # your test ones. Omitting it fails silently and late.
+  #
+  # Then also OR the workflow_run branch into the job if: below (already
+  # included) and keep `github.event.workflow_run.pull_requests[0].number ||` in
+  # the concurrency group. Delete this trigger only if all your gating checks
+  # come from third-party apps rather than Actions.
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+
+jobs:
+  auto-approve:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+      checks: read
+    # Serialize runs per PR to avoid race conditions.
+    # For check_run events the PR number comes from check_run.pull_requests[0].number.
+    concurrency:
+      group: >-
+        pr-auto-approve-${{ github.repository }}-${{
+          github.event.pull_request.number ||
+          github.event.check_run.pull_requests[0].number ||
+          github.event.workflow_run.pull_requests[0].number ||
+          github.run_id
+        }}
+      cancel-in-progress: true
+    # Skip fork PRs and draft PRs. The fork guard is REQUIRED, not optional:
+    # with pull_request_target the run would otherwise get your secrets while
+    # associated with a fork. Handle both pull_request_target and
+    # pull_request_review (a Copilot review submission should
+    # re-evaluate the PR), but guard the review path with actor != bot-login so
+    # the bot's own APPROVE review never re-triggers this workflow (loop-guard).
+    # The guard reads vars.STRSPC_PR_AUTO_APPROVE_BOT_LOGIN (falling back to the
+    # older name PR_AUTO_APPROVE_BOT_LOGIN) — keep it identical to the
+    # bot-login expression below. If you hard-code a literal there, hard-code
+    # the identical value here too, or the loop-guard silently disables (an
+    # unset var makes actor != '' always true; the action then fails the job
+    # on the empty bot-login rather than approving in a loop).
+    # Allow check_run events through but exclude this job's own check to prevent
+    # feedback loops — update 'auto-approve' below if you rename this job.
+    # BASE BRANCH — one source: vars.STRSPC_PR_AUTO_APPROVE_BASE_BRANCH, a
+    # comma-separated set such as 'develop,main' (unset = main). The contains()
+    # below is a SUBSTRING pre-filter that only saves a runner for PRs that
+    # obviously don't qualify ('mai' would pass for 'main'); the action does the
+    # exact match. Kept loose on purpose: an exact match here would silently
+    # skip a value written with spaces ('develop, main'), and a PR it drops is
+    # never approved, with no run to tell you why. For the same reason 'main'
+    # always passes: the action reads a whitespace- or comma-only value as the
+    # default 'main', which contains() cannot see (expressions have no trim).
+    # The cost is a skipped run for main-targeting PRs in repos that exclude it.
+    # If you hard-code base-branch in `with:` instead of using the variable,
+    # replace `vars.STRSPC_PR_AUTO_APPROVE_BASE_BRANCH || 'main'` below with the
+    # same literal: this condition is evaluated before the action ever sees the
+    # input, so it cannot honour a literal it does not contain.
+    # The workflow_run branch below pairs with the trigger in the `on:` section.
+    # The pull_requests[0] != null guard matters: workflow_run fires for EVERY
+    # completed run of the named workflow, including non-PR runs (e.g. a push to
+    # main), which have an empty pull_requests array -- without the guard those
+    # trigger a wasted job run and a noisy "skipped: workflow_run: no associated
+    # PRs" Slack notification. Delete that branch only if you also deleted the
+    # workflow_run trigger.
+    # Every conclusion but skipped re-enters, not only success: a check that fails
+    # on a head the bot already approved (a retitle reruns the title check with
+    # the head unchanged) must reach the action so it can withdraw the approval,
+    # and the action, not this filter, decides what counts as failing (a timeout
+    # or a startup failure does).
+    if: >-
+      (
+        (
+          github.event_name == 'pull_request_target' ||
+          (
+            github.event_name == 'pull_request_review' &&
+            github.actor != (vars.STRSPC_PR_AUTO_APPROVE_BOT_LOGIN || vars.PR_AUTO_APPROVE_BOT_LOGIN)
+          )
+        ) &&
+        (
+          github.event.pull_request.base.ref == 'main' ||
+          contains(vars.STRSPC_PR_AUTO_APPROVE_BASE_BRANCH || 'main', github.event.pull_request.base.ref)
+        ) &&
+        github.event.pull_request.draft == false &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      ) || (
+        github.event_name == 'check_run' &&
+        github.event.check_run.name != 'auto-approve' &&
+        github.event.check_run.pull_requests[0] != null
+      ) || (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion != 'skipped' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.pull_requests[0] != null
+      )
+    steps:
+      # Pinned to a commit SHA like every other action here: this step runs
+      # with the org-wide BOT_TOKEN, so a moved tag must not change its code.
+      # Bump the SHA and the version comment together when upgrading.
+      - uses: SteerSpec/strspc-pr-review@dc4f013b48eee24047f1d2150dd1d18823f6882d # v1.11.0
+        with:
+          # Required: GitHub login of the bot account that will approve PRs.
+          # Keep this expression identical to the loop guard in the if: above.
+          bot-login: ${{ vars.STRSPC_PR_AUTO_APPROVE_BOT_LOGIN || vars.PR_AUTO_APPROVE_BOT_LOGIN }}
+
+          # Required: PAT for bot-login. A fine-grained token with `Pull requests: write`
+          # is enough to post the approval; a classic token needs `repo`. After a
+          # retitle that raises the required rounds the earlier approval is dismissed
+          # with this token, falling back to the job's GITHUB_TOKEN if it is refused.
+          # An organization secret works here too.
+          bot-github-token: ${{ secrets.BOT_TOKEN }}
+
+          # Everything below is read from Actions variables (org-level, overridable
+          # per repo — see the top of this file). Leave a variable unset to get the
+          # action's default. See the README's Inputs table for each value's format.
+
+          # Base branch(es) PRs must target, comma-separated (default: main).
+          # Also drives the job if: above.
+          base-branch: ${{ vars.STRSPC_PR_AUTO_APPROVE_BASE_BRANCH }}
+
+          # Rounds after which Copilot's comments no longer block (default: 3).
+          rounds-threshold: ${{ vars.STRSPC_PR_AUTO_APPROVE_ROUNDS_THRESHOLD }}
+
+          # Conventional-Commit rounds from the PR title, e.g.
+          # 'docs:1,chore:0,fix:3,default:3'. 0 = Copilot not required (approve on
+          # green CI). `edited` in the triggers above makes a retitle re-evaluate.
+          rounds-by-type: ${{ vars.STRSPC_PR_AUTO_APPROVE_ROUNDS_BY_TYPE }}
+
+          # Globs every changed file must match for a type relaxed in
+          # rounds-by-type to apply (default: '**/*.md,docs/**/*.md').
+          copilot-optional-paths: ${{ vars.STRSPC_PR_AUTO_APPROVE_COPILOT_OPTIONAL_PATHS }}
+
+          # Globs whose change stops auto-approval, e.g. 'rules/**,.strspc/**'
+          # (default: off), and what happens then: 'manual' waits for a human
+          # (the default, also for an empty or unknown value), 'allowlist' lets
+          # the normal rules apply when every party is on the allowed logins,
+          # 'approve' always applies them. Promotion and release PRs are not gated.
+          protected-paths: ${{ vars.STRSPC_PR_AUTO_APPROVE_PROTECTED_PATHS }}
+          protected-paths-mode: ${{ vars.STRSPC_PR_AUTO_APPROVE_PROTECTED_PATHS_MODE }}
+          protected-paths-allowed: ${{ vars.STRSPC_PR_AUTO_APPROVE_PROTECTED_PATHS_ALLOWED }}
+
+          # Which verdicts in Copilot's overview can pass as clean (default:
+          # 'verdict', only 'Approval recommended'). 'no-open-issues' also passes
+          # 'Needs a closer look', whose sentence can still name a finding.
+          copilot-clean-on: ${{ vars.STRSPC_PR_AUTO_APPROVE_COPILOT_CLEAN_ON }}
+
+          # head:base pairs approved without a Copilot review, e.g. 'develop:main'
+          # (default: off). The action proves every commit came from an approved
+          # PR, and each base must also be in base-branch.
+          promotion-branches: ${{ vars.STRSPC_PR_AUTO_APPROVE_PROMOTION_BRANCHES }}
+
+          # source:base pairs whose release-please PRs are approved without a
+          # Copilot review, e.g. 'develop:main', or a bare 'main' for a repo with no
+          # source branch (default: off). Each base must also be in base-branch.
+          release-branches: ${{ vars.STRSPC_PR_AUTO_APPROVE_RELEASE_BRANCHES }}
+
+          # Required by release-branches: the login that authors release PRs, e.g.
+          # 'my-release-app[bot]'. The branch name alone proves nothing.
+          release-author: ${{ vars.STRSPC_PR_AUTO_APPROVE_RELEASE_AUTHOR }}
+
+          # 'true' to approve when no external check runs exist (e.g. docs-only
+          # PRs that skip CI via path filters). Default 'false'.
+          allow-no-checks: ${{ vars.STRSPC_PR_AUTO_APPROVE_ALLOW_NO_CHECKS }}
+
+          # 'true' to have the action request the Copilot review, so types set to
+          # 0 above are skipped. Disable the ruleset's automatic review first.
+          request-copilot-review: ${{ vars.STRSPC_PR_AUTO_APPROVE_REQUEST_COPILOT_REVIEW }}
+
+          # STRONGLY RECOMMENDED if Copilot reviews your PRs: set it to 600.
+          # Without it, a PR whose Copilot review lands AFTER CI is never
+          # re-evaluated and sits unapproved forever: Copilot's check_run is
+          # GITHUB_TOKEN-created, and any workflow run Copilot itself triggers is
+          # held at 'action_required' pending manual approval. This makes the
+          # CI-triggered run wait for Copilot's check instead of skipping. Free on
+          # public repos; consumes billable Actions minutes on private ones, hence
+          # 0 by default.
+          wait-for-copilot-seconds: ${{ vars.STRSPC_PR_AUTO_APPROVE_WAIT_FOR_COPILOT_SECONDS }}
+
+          # Slack channel for notifications (default: alert-pr-notifications).
+          # Used only when slack-bot-token is set.
+          slack-channel: ${{ vars.STRSPC_PR_AUTO_APPROVE_SLACK_CHANNEL }}
+
+          # Times to re-request Copilot's review per commit when its review errors
+          # ("unable to review"), e.g. 2. 0 (default) = off.
+          copilot-error-retries: ${{ vars.STRSPC_PR_AUTO_APPROVE_COPILOT_ERROR_RETRIES }}
+
+          # Optional: Slack bot token for approval/skip/error notifications.
+          # Remove this line to disable Slack notifications.
+          # slack-bot-token: ${{ secrets.SLACK_BOT_TOKEN }}

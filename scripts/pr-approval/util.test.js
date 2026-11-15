@@ -190,6 +190,19 @@ test('fetchCheckRuns drops this run and unfinished runs named like its job; keep
   assert.deepEqual(runs.map((r) => r.id).sort(), [5, 6]);
 });
 
+test('APPROVE-002: an unfinished strspc-pr-review auto-approve run is ignored; a finished one still counts', async () => {
+  assert.deepEqual(util.COMPANION_JOBS, ['auto-approve']);
+  const github = checksGithub([[
+    { id: 1, name: 'auto-approve', app: { id: 1 }, status: 'in_progress', started_at: '2026-01-01T01:00:00Z' },
+    { id: 2, name: 'auto-approve', app: { id: 2 }, status: 'completed', conclusion: 'failure' },
+    { id: 3, name: 'ci', app: { id: 1 }, status: 'queued' },
+  ]]);
+  const runs = await util.fetchCheckRuns({ github, context: ctx, owner: 'o', repo: 'r', headSha: 'abc' });
+  // 1 is the companion mid-run: dropped. 2 finished, so it may be anyone's
+  // job of that name and keeps counting. 3 is real CI and still pending.
+  assert.deepEqual(runs.map((r) => r.id).sort(), [2, 3]);
+});
+
 test('APPROVE-002: a failing CI job sharing this job\'s name still blocks; cancelled siblings pass', async () => {
   const github = checksGithub([[
     { id: 1, name: 'pr-approval', app: { id: 1 }, status: 'completed', conclusion: 'cancelled' },

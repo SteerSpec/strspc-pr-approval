@@ -38,6 +38,13 @@ const isFailedCheck = (cr) =>
 // cancel), deduped by (name, app) keeping the latest attempt. A completed run
 // with the same name still counts: names are not unique across workflows, so
 // it may be someone's CI. A cancelled sibling passes anyway (see above).
+// Job names of the companion approver, strspc-pr-review (its caller's job id).
+// Both actions start on the same events, so each finds the other's job still
+// running; waiting on it stalls the PR, since its completion re-triggers
+// nothing. Like this action's own job, it gates approval rather than testing
+// the code, so only an UNFINISHED run of it is ignored (APPROVE-002).
+const COMPANION_JOBS = ['auto-approve'];
+
 async function fetchCheckRuns({ github, context, owner, repo, headSha, selfJobNames = [] }) {
   const all = [];
   let page = 1;
@@ -49,7 +56,7 @@ async function fetchCheckRuns({ github, context, owner, repo, headSha, selfJobNa
     page++;
   }
   const selfRunRe = new RegExp(`/runs/${String(context.runId)}(/|$)`);
-  const selfJobs = new Set(['strspc-pr-approval', context.job, ...selfJobNames].filter(Boolean));
+  const selfJobs = new Set(['strspc-pr-approval', ...COMPANION_JOBS, context.job, ...selfJobNames].filter(Boolean));
   const notSelf = all.filter((cr) => cr != null &&
     !(cr.details_url && selfRunRe.test(cr.details_url)) &&
     !(selfJobs.has(cr.name) && cr.status !== 'completed'));
@@ -194,6 +201,7 @@ module.exports = {
   API_RETRIES,
   MAX_LISTED_FILES,
   CHECK_OK_CONCLUSIONS,
+  COMPANION_JOBS,
   makeApiClient,
   stripApiHost,
   describeError,

@@ -6,9 +6,9 @@
     "description": "When the action may approve a pull request, and when it must refuse or take an approval back."
   },
   "rule_set": {
-    "version": "0.1.11",
-    "timestamp": "2026-11-09T17:58:12Z",
-    "hash": "blake3:6b71ba0313b61d01669369346ab0f81c80935de10e0d477e52a4349623460582"
+    "version": "0.1.12",
+    "timestamp": "2026-11-15T07:52:01Z",
+    "hash": "blake3:bc2b547eec79574ad9fc85d1d2c89a5f3b3931426bc9aba4f441af190b6498e9"
   },
   "rules": [
     {
@@ -22,9 +22,9 @@
     },
     {
       "id": "APPROVE-002",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "The action MUST NOT approve a pull request while any check on its head is unfinished or has concluded with anything other than success, neutral, skipped, cancelled or stale, ignoring the runs of its own job.",
+      "body": "The action MUST NOT approve a pull request while any check on its head is unfinished or has concluded with anything other than success, neutral, skipped, cancelled or stale, ignoring only unfinished runs of its own job and of the strspc-pr-review auto-approve job, since both gate approval rather than test the code.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null

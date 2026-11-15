@@ -6,9 +6,9 @@
     "description": "When the action may approve a pull request, and when it must refuse or take an approval back."
   },
   "rule_set": {
-    "version": "0.1.17",
-    "timestamp": "2026-11-15T17:51:02Z",
-    "hash": "blake3:8d8c3c2b39854250d2b2c07718c68fbe18b3e0124296de971c77b271a44a236f"
+    "version": "0.1.18",
+    "timestamp": "2026-11-15T17:59:43Z",
+    "hash": "blake3:e8cba8b7b7b7754daf8cb4a168cc7830321d8ecce0cebc02b9d854fdac2de40d"
   },
   "rules": [
     {
@@ -22,9 +22,9 @@
     },
     {
       "id": "APPROVE-002",
-      "revision": 1,
+      "revision": 2,
       "state": "D",
-      "body": "The action MUST NOT approve a pull request while any check on its head is unfinished or has concluded with anything other than success, neutral, skipped, cancelled or stale, ignoring only unfinished runs of its own job and of the strspc-pr-review auto-approve job, since both gate approval rather than test the code.",
+      "body": "The action MUST NOT approve a pull request while any check on its head is unfinished or has concluded with anything other than success, neutral, skipped, cancelled or stale, ignoring only unfinished runs of its own job and unfinished strspc-pr-review auto-approve runs that GitHub Actions started for pull_request_target, pull_request_review, check_run or workflow_run, since both gate approval rather than test the code.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null

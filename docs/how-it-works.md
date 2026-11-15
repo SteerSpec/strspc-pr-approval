@@ -33,6 +33,11 @@ acting on the same PR, give strspc-pr-review `exclude-heads`/`exclude-bases` mat
 here (or keep its `base-branch` to `develop` and the bot heads out of it), and unset its deprecated
 `promotion-branches`, `release-branches` and `release-author`.
 
+The two also run on the same events, so each finds the other's job still running. This action
+therefore ignores an unfinished `auto-approve` check (strspc-pr-review's job id), just as it ignores
+its own; a finished one counts like any other check (APPROVE-002). strspc-pr-review must do the
+same for `strspc-pr-approval`, or its PRs stall on this job.
+
 ## Why a policy file and a realm
 
 Realm rules are prose — reviewable, versioned, citeable — but prose cannot be evaluated

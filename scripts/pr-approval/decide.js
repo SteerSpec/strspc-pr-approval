@@ -12,7 +12,7 @@
 //   PR_APPROVAL_POLICY_FILE      policy path in the repository (default .strspc/pr-approval.yml)
 //   PR_APPROVAL_DRY_RUN          'true' = decide and report, write nothing
 //   PR_APPROVAL_ALLOW_NO_CHECKS  'true' = a head with no checks may be approved
-//   PR_APPROVAL_COMPANION_WORKFLOW  strspc-pr-review's caller file (unset = the default, '' = off)
+//   PR_APPROVAL_COMPANION_WORKFLOW  strspc-pr-review's caller file (empty = the default, 'off' = none)
 
 const defaultKinds = require('./kinds/index.js');
 const { loadPolicy, matchPolicy, requireBlocker, PolicyError } = require('./policy.js');
@@ -44,15 +44,21 @@ function markerBase(review) {
 const labelSet = (p) => (p.labels || []).map((l) => (typeof l === 'string' ? l : l.name)).sort().join('\n');
 const truthy = (v) => String(v || '').trim().toLowerCase() === 'true';
 
+function companionWorkflow(value) {
+  const v = String(value || '').trim();
+  if (!v) return DEFAULT_COMPANION_WORKFLOW;
+  return v.toLowerCase() === 'off' ? '' : v;
+}
+
 function readConfig(env = process.env) {
   return {
     botLogin: String(env.PR_APPROVAL_BOT_LOGIN || '').trim(),
     policyFile: String(env.PR_APPROVAL_POLICY_FILE || '').trim() || DEFAULT_POLICY_FILE,
     dryRun: truthy(env.PR_APPROVAL_DRY_RUN),
     allowNoChecks: truthy(env.PR_APPROVAL_ALLOW_NO_CHECKS),
-    companionWorkflow: env.PR_APPROVAL_COMPANION_WORKFLOW === undefined
-      ? DEFAULT_COMPANION_WORKFLOW
-      : String(env.PR_APPROVAL_COMPANION_WORKFLOW).trim(),
+    // Empty means the default, not off: an unset Actions variable wired to the
+    // input arrives as '' and must not silently drop the exemption.
+    companionWorkflow: companionWorkflow(env.PR_APPROVAL_COMPANION_WORKFLOW),
   };
 }
 

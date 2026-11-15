@@ -259,7 +259,7 @@ test('APPROVE-002: only a run of the companion-workflow file identifies the comp
   assert.deepEqual(await ids({}), [2, 4]);
   // A renamed caller file is named explicitly.
   assert.deepEqual(await ids({ companionWorkflow: '.github/workflows/pr-review.yml' }), [1, 2, 3]);
-  // Empty turns the exemption off, without a lookup.
+  // '' (what companion-workflow: off resolves to) turns the exemption off, without a lookup.
   const github = companionGithub([[running(1, 900)]], events);
   const runs = await util.fetchCheckRuns({ github, context: ctx, owner: 'o', repo: 'r', headSha: 'abc', companionWorkflow: '' });
   assert.deepEqual(runs.map((r) => r.id), [1]);

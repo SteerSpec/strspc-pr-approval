@@ -192,7 +192,9 @@ test('readConfig defaults', () => {
     botLogin: '', policyFile: decide.DEFAULT_POLICY_FILE, dryRun: false, allowNoChecks: false,
     companionWorkflow: '.github/workflows/auto-approve.yml',
   });
-  assert.equal(decide.readConfig({ PR_APPROVAL_COMPANION_WORKFLOW: '  ' }).companionWorkflow, '');
+  assert.equal(decide.readConfig({ PR_APPROVAL_COMPANION_WORKFLOW: '  ' }).companionWorkflow,
+    '.github/workflows/auto-approve.yml');
+  assert.equal(decide.readConfig({ PR_APPROVAL_COMPANION_WORKFLOW: ' OFF ' }).companionWorkflow, '');
   assert.equal(decide.readConfig({ PR_APPROVAL_COMPANION_WORKFLOW: ' .github/workflows/pr.yml ' }).companionWorkflow,
     '.github/workflows/pr.yml');
   assert.deepEqual(decide.readConfig({

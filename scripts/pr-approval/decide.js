@@ -22,7 +22,7 @@ const {
 
 const DEFAULT_POLICY_FILE = '.strspc/pr-approval.yml';
 // Every approval carries the marker with the base it was given for, so a
-// retargeted PR loses it (APPROVE-004) and only our own approvals are touched.
+// retargeted PR loses it (APPROVE-004) and only our own approvals are touched (APPROVE-012).
 const MARKER_PREFIX = '<!-- strspc-pr-approval';
 const marker = (base) => `${MARKER_PREFIX} base=${encodeURIComponent(base)} -->`;
 const MARKER = MARKER_PREFIX;
@@ -129,6 +129,7 @@ async function decideInner({
   let pr = null;
   let policy = null;
 
+  // POLICY-007: every line names the policy and the rules it cites.
   const tag = (msg) => (policy ? `[${policy.id}: ${policy.rules.join(', ')}] ${msg}` : msg);
   const finish = async (decision, bareReason, { merged = false } = {}) => {
     const reason = tag(bareReason);
@@ -226,7 +227,7 @@ async function decideInner({
   if (!loaded) return refuse(`no ${cfg.policyFile} on ${pr.base.ref}`);
 
   policy = matchPolicy(loaded.policies, pr, kinds);
-  if (!policy) return refuse('no policy matches this PR'); // POLICY-006
+  if (!policy) return refuse('no policy matches this PR'); // POLICY-008
   const kind = kinds[policy.kind];
   const options = policy.options || {};
   if (policy.approve === false) return refuse('the matching policy approves nothing');

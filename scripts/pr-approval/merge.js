@@ -118,7 +118,7 @@ async function mergePullRequest({
   justApproved = false, sleep = defaultSleep, settleAttempts = SETTLE_ATTEMPTS, settleMs = SETTLE_MS,
 }) {
   const number = pr && pr.number;
-  // POLICY-005: the merge line names what authorised it.
+  // POLICY-007: the merge line names what authorised it.
   const policyTag = policy ? `${policy.id}[${(policy.rules || []).join(',')}]` : 'none';
   const done = (result) => {
     const line = result.merged

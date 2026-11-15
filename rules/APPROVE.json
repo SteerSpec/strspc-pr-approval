@@ -6,9 +6,9 @@
     "description": "When the action may approve a pull request, and when it must refuse or take an approval back."
   },
   "rule_set": {
-    "version": "0.1.12",
-    "timestamp": "2026-11-15T07:52:01Z",
-    "hash": "blake3:bc2b547eec79574ad9fc85d1d2c89a5f3b3931426bc9aba4f441af190b6498e9"
+    "version": "0.1.17",
+    "timestamp": "2026-11-15T17:51:02Z",
+    "hash": "blake3:8d8c3c2b39854250d2b2c07718c68fbe18b3e0124296de971c77b271a44a236f"
   },
   "rules": [
     {
@@ -31,18 +31,18 @@
     },
     {
       "id": "APPROVE-003",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "The action MUST re-read the head, base, title and draft state of a pull request before and after approving it, and MUST withdraw its approval when any of them changed.",
+      "body": "The action MUST re-read the head, base, title and draft state of a pull request before and after approving it, withdrawing its approval when any of them changed.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null
     },
     {
       "id": "APPROVE-004",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "The action MUST withdraw an earlier approval of its own given for a different head or a different base before it evaluates a pull request, and MUST NOT withdraw an approval it did not give.",
+      "body": "The action MUST withdraw an earlier approval of its own given for a different head or a different base before it evaluates a pull request.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null
@@ -94,20 +94,29 @@
     },
     {
       "id": "APPROVE-010",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "A policy MAY tighten the conditions of a built-in kind and MUST NOT be able to relax them.",
+      "body": "A policy MUST NOT be able to relax the conditions of a built-in kind, only to tighten them.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null
     },
     {
       "id": "APPROVE-011",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "An evaluator veto MAY block an approval or downgrade a pull request to needing a human, and MUST NOT approve or merge a pull request.",
+      "body": "An evaluator veto MUST NOT approve or merge a pull request, only block an approval or downgrade the pull request to needing a human.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-012",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST NOT withdraw an approval it did not give.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-15",
       "supersedes": null
     }
   ],

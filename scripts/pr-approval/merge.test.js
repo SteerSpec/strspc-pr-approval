@@ -179,7 +179,7 @@ test('MERGE-003: a requiresTip kind refuses when the head is no longer the branc
   assert.equal((await mergePullRequest(args)).merged, true);
 });
 
-test('POLICY-005: the merge log line names the policy and its rules', async () => {
+test('POLICY-007: the merge log line names the policy and its rules', async () => {
   const { args, calls } = setup();
   await mergePullRequest(args);
   assert.match(calls.info[0], /policy=p\[MERGE-001\] merged=true/);

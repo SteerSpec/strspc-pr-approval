@@ -78,8 +78,12 @@ async function fetchCheckRuns({ github, context, owner, repo, headSha, selfJobNa
     page++;
   }
   const selfRunRe = new RegExp(`/runs/${String(context.runId)}(/|$)`);
-  const selfJobs = new Set(['strspc-pr-approval', context.job, ...selfJobNames].filter(Boolean));
-  const companionJobs = new Set(COMPANION_JOBS.filter((n) => !selfJobs.has(n)));
+  // A companion name always goes through the provenance check, even when a
+  // caller named its own job the same: a name shortcut would let CI of that
+  // name through. This run is already dropped by its URL above.
+  const companionJobs = new Set(COMPANION_JOBS);
+  const selfJobs = new Set(['strspc-pr-approval', context.job, ...selfJobNames]
+    .filter((n) => n && !companionJobs.has(n)));
   const cache = new Map();
   const notSelf = [];
   for (const cr of all) {

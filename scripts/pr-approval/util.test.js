@@ -224,6 +224,19 @@ test('APPROVE-002: an unfinished auto-approve run is ignored only when Actions r
   assert.deepEqual(github.runLookups.sort(), [900, 901, 903]);
 });
 
+test('APPROVE-002: a caller job named auto-approve does not exempt CI of that name', async () => {
+  const github = companionGithub([[
+    { id: 1, name: 'auto-approve', status: 'in_progress', app: actionsApp, details_url: jobUrl(777) }, // this run
+    { id: 2, name: 'auto-approve', status: 'in_progress', app: actionsApp, details_url: jobUrl(901) }, // CI
+    { id: 3, name: 'auto-approve', status: 'in_progress', app: { ...actionsApp, id: 9 }, details_url: jobUrl(900) },
+  ]], { 900: 'pull_request_target', 901: 'pull_request' });
+  const runs = await util.fetchCheckRuns({
+    github, context: { runId: 777, job: 'auto-approve' }, owner: 'o', repo: 'r', headSha: 'abc', selfJobNames: ['auto-approve'],
+  });
+  // 1 is this run (by URL), 3 an approver run: both dropped. 2 is CI: waited for.
+  assert.deepEqual(runs.map((r) => r.id), [2]);
+});
+
 test('APPROVE-002: every approver event identifies the companion; CI events never do', async () => {
   for (const event of ['pull_request_target', 'pull_request_review', 'check_run', 'workflow_run', 'pull_request', 'push', 'merge_group']) {
     const github = companionGithub([[

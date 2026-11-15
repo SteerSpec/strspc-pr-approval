@@ -37,8 +37,9 @@ here (or keep its `base-branch` to `develop` and the bot heads out of it), and u
 The two also run on the same events, so each finds the other's job still running. This action
 therefore ignores an unfinished `auto-approve` check (strspc-pr-review's job id), just as it ignores
 its own; a finished one counts like any other check (APPROVE-002). A name alone proves nothing, so
-the check must also come from a GitHub Actions run started by `pull_request_target`,
-`pull_request_review`, `check_run` or `workflow_run`. CI runs on `pull_request`, `push` or
+the check must also come from a GitHub Actions run of the `companion-workflow` file (default
+`.github/workflows/auto-approve.yml`) started by `pull_request_target`, `pull_request_review`,
+`check_run` or `workflow_run`. CI runs on `pull_request`, `push` or
 `merge_group`, so a CI job that happens to share the name is still waited for. The lookup needs
 `actions: read`; without it, the check counts as pending. strspc-pr-review must do the
 same for `strspc-pr-approval`, or its PRs stall on this job.

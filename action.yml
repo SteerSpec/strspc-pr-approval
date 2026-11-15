@@ -63,6 +63,14 @@ inputs:
     description: >-
       'true' to approve a head that has no check runs at all. Default 'false':
       a head with no checks waits.
+  companion-workflow:
+    required: false
+    default: '.github/workflows/auto-approve.yml'
+    description: >-
+      Path of the strspc-pr-review caller workflow in this repository. An
+      unfinished `auto-approve` check is ignored only when it comes from a run
+      of this file started by pull_request_target, pull_request_review,
+      check_run or workflow_run (APPROVE-002). Empty turns that exemption off.
 
 outputs:
   decision:
@@ -100,6 +108,7 @@ runs:
         PR_APPROVAL_POLICY_FILE: ${{ inputs.policy-file }}
         PR_APPROVAL_DRY_RUN: ${{ inputs.dry-run }}
         PR_APPROVAL_ALLOW_NO_CHECKS: ${{ inputs.allow-no-checks }}
+        PR_APPROVAL_COMPANION_WORKFLOW: ${{ inputs.companion-workflow }}
         PR_APPROVAL_APPROVE_TOKEN: ${{ inputs.approve-token }}
         PR_APPROVAL_GITHUB_TOKEN: ${{ inputs.github-token }}
         PR_APPROVAL_MERGE_TOKEN: ${{ inputs.merge-token }}

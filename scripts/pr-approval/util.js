@@ -47,27 +47,38 @@ const COMPANION_JOBS = ['auto-approve'];
 
 // A name alone does not identify the companion: a repository may have CI
 // named the same. An unfinished run is only taken for the companion when
-// GitHub Actions runs it for an event an approver listens to and CI does not
-// (CI runs on pull_request, push or merge_group). These events run the
-// workflow from the default branch, except pull_request_review, which a
-// same-repository PR could define; that PR author already controls its own
-// CI, so it gains nothing. Anything unproven still counts as pending.
+// GitHub Actions runs it from the companion's caller workflow file (the
+// `companion-workflow` input, default .github/workflows/auto-approve.yml) for
+// an event an approver listens to; CI runs on pull_request, push or
+// merge_group. These events run the workflow from the default branch, except
+// pull_request_review, which a same-repository PR could define; that PR author
+// already controls its own CI, so it gains nothing. An empty
+// companion-workflow turns the exemption off. Anything unproven, a failed
+// lookup included, still counts as pending.
+const DEFAULT_COMPANION_WORKFLOW = '.github/workflows/auto-approve.yml';
 const COMPANION_EVENTS = new Set(['pull_request_target', 'pull_request_review', 'check_run', 'workflow_run']);
 const ACTIONS_APP_SLUG = 'github-actions';
 const RUN_ID_RE = /\/actions\/runs\/(\d+)(?:\/|$)/;
 
-async function isCompanionRun({ github, owner, repo, cr, cache }) {
+// A run's path can carry the ref it ran from ("file.yml@refs/heads/x").
+const workflowFile = (p) => String(p || '').split('@')[0];
+
+async function isCompanionRun({ github, owner, repo, cr, cache, companionWorkflow }) {
+  if (!companionWorkflow) return false;
   if (!cr.app || cr.app.slug !== ACTIONS_APP_SLUG) return false;
   const m = RUN_ID_RE.exec(cr.details_url || '');
   if (!m) return false;
   if (!cache.has(m[1])) {
     cache.set(m[1], github.rest.actions.getWorkflowRun({ owner, repo, run_id: Number(m[1]) })
-      .then(({ data }) => COMPANION_EVENTS.has(data.event), () => false));
+      .then(({ data }) => COMPANION_EVENTS.has(data.event) && workflowFile(data.path) === companionWorkflow,
+        () => false));
   }
   return cache.get(m[1]);
 }
 
-async function fetchCheckRuns({ github, context, owner, repo, headSha, selfJobNames = [] }) {
+async function fetchCheckRuns({
+  github, context, owner, repo, headSha, selfJobNames = [], companionWorkflow = DEFAULT_COMPANION_WORKFLOW,
+}) {
   const all = [];
   let page = 1;
   while (true) {
@@ -91,7 +102,7 @@ async function fetchCheckRuns({ github, context, owner, repo, headSha, selfJobNa
     if (cr.details_url && selfRunRe.test(cr.details_url)) continue;
     if (cr.status !== 'completed') {
       if (selfJobs.has(cr.name)) continue;
-      if (companionJobs.has(cr.name) && await isCompanionRun({ github, owner, repo, cr, cache })) continue;
+      if (companionJobs.has(cr.name) && await isCompanionRun({ github, owner, repo, cr, cache, companionWorkflow })) continue;
     }
     notSelf.push(cr);
   }
@@ -238,6 +249,7 @@ module.exports = {
   CHECK_OK_CONCLUSIONS,
   COMPANION_JOBS,
   COMPANION_EVENTS,
+  DEFAULT_COMPANION_WORKFLOW,
   makeApiClient,
   stripApiHost,
   describeError,

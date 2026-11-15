@@ -112,3 +112,5 @@ jobs:
           allow-no-checks: ${{ vars.STRSPC_PR_APPROVAL_ALLOW_NO_CHECKS }}
           # A private central policy repository needs its own read token:
           # policy-token: ${{ secrets.POLICY_READ_TOKEN }}
+          # strspc-pr-review's caller, if it is not .github/workflows/auto-approve.yml:
+          # companion-workflow: .github/workflows/<its file>.yml

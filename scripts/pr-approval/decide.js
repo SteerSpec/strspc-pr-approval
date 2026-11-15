@@ -12,12 +12,14 @@
 //   PR_APPROVAL_POLICY_FILE      policy path in the repository (default .strspc/pr-approval.yml)
 //   PR_APPROVAL_DRY_RUN          'true' = decide and report, write nothing
 //   PR_APPROVAL_ALLOW_NO_CHECKS  'true' = a head with no checks may be approved
+//   PR_APPROVAL_COMPANION_WORKFLOW  strspc-pr-review's caller file (unset = the default, '' = off)
 
 const defaultKinds = require('./kinds/index.js');
 const { loadPolicy, matchPolicy, requireBlocker, PolicyError } = require('./policy.js');
 const { mergePullRequest } = require('./merge.js');
 const {
   makeApiClient, stripApiHost, describeError, isFailedCheck, fetchCheckRuns, compareHead, dismissReview,
+  DEFAULT_COMPANION_WORKFLOW,
 } = require('./util.js');
 
 const DEFAULT_POLICY_FILE = '.strspc/pr-approval.yml';
@@ -48,6 +50,9 @@ function readConfig(env = process.env) {
     policyFile: String(env.PR_APPROVAL_POLICY_FILE || '').trim() || DEFAULT_POLICY_FILE,
     dryRun: truthy(env.PR_APPROVAL_DRY_RUN),
     allowNoChecks: truthy(env.PR_APPROVAL_ALLOW_NO_CHECKS),
+    companionWorkflow: env.PR_APPROVAL_COMPANION_WORKFLOW === undefined
+      ? DEFAULT_COMPANION_WORKFLOW
+      : String(env.PR_APPROVAL_COMPANION_WORKFLOW).trim(),
   };
 }
 
@@ -250,7 +255,9 @@ async function decideInner({
   }
 
   // APPROVE-002
-  const checkRuns = await fetchCheckRuns({ github, context, owner, repo, headSha });
+  const checkRuns = await fetchCheckRuns({
+    github, context, owner, repo, headSha, companionWorkflow: cfg.companionWorkflow,
+  });
   if (checkRuns.length === 0 && !cfg.allowNoChecks) return finish('skip', 'no checks on head SHA yet');
   const bad = checkRuns.find(isFailedCheck);
   if (bad) return refuse(`failing check: ${bad.name} (${bad.conclusion})`);

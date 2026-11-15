@@ -197,7 +197,9 @@ function companionGithub(pages, events) {
     getWorkflowRun: async ({ run_id }) => {
       github.runLookups.push(run_id);
       if (!(run_id in events)) throw Object.assign(new Error('Not Found'), { status: 404 });
-      return { data: { id: run_id, event: events[run_id] } };
+      const r = events[run_id];
+      const { event, path = '.github/workflows/auto-approve.yml' } = typeof r === 'string' ? { event: r } : r;
+      return { data: { id: run_id, event, path } };
     },
   };
   return github;
@@ -235,6 +237,33 @@ test('APPROVE-002: a caller job named auto-approve does not exempt CI of that na
   });
   // 1 is this run (by URL), 3 an approver run: both dropped. 2 is CI: waited for.
   assert.deepEqual(runs.map((r) => r.id), [2]);
+});
+
+test('APPROVE-002: only a run of the companion-workflow file identifies the companion', async () => {
+  // Distinct app ids keep the four apart in the (name, app) dedupe.
+  const running = (id, run) => ({
+    id, name: 'auto-approve', status: 'in_progress', app: { ...actionsApp, id }, details_url: jobUrl(run),
+  });
+  const events = {
+    900: 'workflow_run', // default path
+    901: { event: 'workflow_run', path: '.github/workflows/ci.yml' }, // other workflow, approver event
+    902: { event: 'check_run', path: '.github/workflows/auto-approve.yml@refs/heads/develop' }, // ref suffix
+    903: { event: 'workflow_run', path: '.github/workflows/pr-review.yml' },
+  };
+  const ids = async (opts) => (await util.fetchCheckRuns({
+    github: companionGithub([[running(1, 900), running(2, 901), running(3, 902), running(4, 903)]], events),
+    context: ctx, owner: 'o', repo: 'r', headSha: 'abc', ...opts,
+  })).map((r) => r.id).sort();
+  assert.equal(util.DEFAULT_COMPANION_WORKFLOW, '.github/workflows/auto-approve.yml');
+  // Default: 1 and 3 are the companion; 2 and 4 are other workflows and stay pending.
+  assert.deepEqual(await ids({}), [2, 4]);
+  // A renamed caller file is named explicitly.
+  assert.deepEqual(await ids({ companionWorkflow: '.github/workflows/pr-review.yml' }), [1, 2, 3]);
+  // Empty turns the exemption off, without a lookup.
+  const github = companionGithub([[running(1, 900)]], events);
+  const runs = await util.fetchCheckRuns({ github, context: ctx, owner: 'o', repo: 'r', headSha: 'abc', companionWorkflow: '' });
+  assert.deepEqual(runs.map((r) => r.id), [1]);
+  assert.deepEqual(github.runLookups, []);
 });
 
 test('APPROVE-002: every approver event identifies the companion; CI events never do', async () => {

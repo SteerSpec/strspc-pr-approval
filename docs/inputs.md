@@ -16,6 +16,7 @@ Settings that decide *what* gets approved live in the policy file, not here — 
 | `policy-file` | `.strspc/pr-approval.yml` | Policy path, always read from the PR's base branch (POLICY-001) |
 | `dry-run` | `false` | `true` decides and reports without approving, withdrawing or merging |
 | `allow-no-checks` | `false` | `true` lets a head with no check runs be approved |
+| `companion-workflow` | `.github/workflows/auto-approve.yml` | strspc-pr-review's caller file. An unfinished `auto-approve` check is ignored only when a run of this file, started by an approver event, posted it (APPROVE-002). Empty = never ignored |
 
 ## Outputs
 

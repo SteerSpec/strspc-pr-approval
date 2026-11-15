@@ -10,7 +10,7 @@ Settings that decide *what* gets approved live in the policy file, not here — 
 | ----- | ------- | ----------- |
 | `bot-login` | | Login of the approving account. Must differ from the account that opens the PRs (GitHub rejects self-approval) |
 | `approve-token` | | Token of `bot-login`, used only to post and dismiss approvals. A fine-grained PAT with `Pull requests: write` |
-| `github-token` | `${{ github.token }}` | Every read: the PR, reviews, check runs, commits, the policy and the realm. Needs `contents: read`, `pull-requests: write`, `checks: read` |
+| `github-token` | `${{ github.token }}` | Every read: the PR, reviews, check runs, commits, the policy and the realm. Needs `contents: read`, `pull-requests: write`, `checks: read`, `actions: read` |
 | `merge-token` | `''` | Token used to merge when a policy enables it. Use a GitHub App token; `GITHUB_TOKEN` merges start no workflow (MERGE-002). Empty = never merge |
 | `policy-token` | `''` | Reads `extends:`/`realm:` sources in other repositories. Defaults to `github-token` (public repositories only) |
 | `policy-file` | `.strspc/pr-approval.yml` | Policy path, always read from the PR's base branch (POLICY-001) |

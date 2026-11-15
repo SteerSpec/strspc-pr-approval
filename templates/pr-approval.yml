@@ -50,6 +50,9 @@ jobs:
       contents: read
       pull-requests: write
       checks: read
+      # Reads the workflow run behind an unfinished `auto-approve` check, to tell
+      # strspc-pr-review's job from CI of the same name.
+      actions: read
     concurrency:
       group: >-
         pr-approval-${{ github.repository }}-${{

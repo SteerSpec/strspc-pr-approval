@@ -27,8 +27,9 @@ inputs:
     description: >-
       Token used for every read (the PR, its reviews, check runs, commits, the
       policy file and the realm). Defaults to the workflow GITHUB_TOKEN; the
-      caller grants it `contents: read`, `pull-requests: write` and
-      `checks: read`.
+      caller grants it `contents: read`, `pull-requests: write`,
+      `checks: read` and `actions: read` (to tell strspc-pr-review's job
+      from CI of the same name).
   merge-token:
     required: false
     default: ''

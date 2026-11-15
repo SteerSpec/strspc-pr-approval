@@ -10,7 +10,8 @@ serialized per PR. Every step is an API call; nothing from the PR is checked out
    approving account.
 3. **Load the policy from the base branch** (POLICY-001), resolve `extends:` (tags/SHAs only,
    POLICY-002/003), validate (POLICY-004), check every cited rule ID against its realm (POLICY-005).
-4. **Match** the first policy (POLICY-006). No match: the PR is not this action's business.
+4. **Match** the first policy (POLICY-006). No match: the action takes no action beyond withdrawing an
+   approval of its own, if it gave one (POLICY-008).
 5. **Tip check** for kinds whose proof covers a branch (promotion, release).
 6. **Withdraw** our approvals of older heads (APPROVE-004).
 7. **Checks**: none yet waits (unless `allow-no-checks`); a failing one refuses and withdraws; a

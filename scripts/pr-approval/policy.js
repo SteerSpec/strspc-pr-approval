@@ -9,8 +9,10 @@
 //   POLICY-002  extends only a tag or a full commit SHA, never a branch
 //   POLICY-003  no cycles, bounded depth
 //   POLICY-004  an invalid policy means no action at all
-//   POLICY-005  every policy cites rule IDs; decisions quote them
+//   POLICY-005  every policy cites rule IDs
 //   POLICY-006  first match wins, in file order after extends are merged
+//   POLICY-007  every review and log line quotes the cited rule IDs (decide.js, merge.js)
+//   POLICY-008  no match means no action beyond withdrawing our own approval (decide.js)
 
 const path = require('path');
 const yaml = require('../../vendor/js-yaml/js-yaml.js');

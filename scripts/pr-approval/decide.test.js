@@ -190,10 +190,15 @@ const assertNoWrites = (h) => {
 test('readConfig defaults', () => {
   assert.deepEqual(decide.readConfig({}), {
     botLogin: '', policyFile: decide.DEFAULT_POLICY_FILE, dryRun: false, allowNoChecks: false,
+    companionWorkflow: '.github/workflows/auto-approve.yml',
   });
+  assert.equal(decide.readConfig({ PR_APPROVAL_COMPANION_WORKFLOW: '  ' }).companionWorkflow, '');
+  assert.equal(decide.readConfig({ PR_APPROVAL_COMPANION_WORKFLOW: ' .github/workflows/pr.yml ' }).companionWorkflow,
+    '.github/workflows/pr.yml');
   assert.deepEqual(decide.readConfig({
     PR_APPROVAL_BOT_LOGIN: ' b ', PR_APPROVAL_POLICY_FILE: 'x.yml', PR_APPROVAL_DRY_RUN: 'TRUE', PR_APPROVAL_ALLOW_NO_CHECKS: 'true',
-  }), { botLogin: 'b', policyFile: 'x.yml', dryRun: true, allowNoChecks: true });
+  }), { botLogin: 'b', policyFile: 'x.yml', dryRun: true, allowNoChecks: true,
+    companionWorkflow: '.github/workflows/auto-approve.yml' });
 });
 
 test('an empty bot-login fails the job', async () => {

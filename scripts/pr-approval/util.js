@@ -42,10 +42,43 @@ const isFailedCheck = (cr) =>
 // Both actions start on the same events, so each finds the other's job still
 // running; waiting on it stalls the PR, since its completion re-triggers
 // nothing. Like this action's own job, it gates approval rather than testing
-// the code, so only an UNFINISHED run of it is ignored (APPROVE-002).
+// the code, so an UNFINISHED run of it is ignored (APPROVE-002).
 const COMPANION_JOBS = ['auto-approve'];
 
-async function fetchCheckRuns({ github, context, owner, repo, headSha, selfJobNames = [] }) {
+// A name alone does not identify the companion: a repository may have CI
+// named the same. An unfinished run is only taken for the companion when
+// GitHub Actions runs it from the companion's caller workflow file (the
+// `companion-workflow` input, default .github/workflows/auto-approve.yml) for
+// an event an approver listens to; CI runs on pull_request, push or
+// merge_group. These events run the workflow from the default branch, except
+// pull_request_review, which a same-repository PR could define; that PR author
+// already controls its own CI, so it gains nothing. An empty
+// companion-workflow turns the exemption off. Anything unproven, a failed
+// lookup included, still counts as pending.
+const DEFAULT_COMPANION_WORKFLOW = '.github/workflows/auto-approve.yml';
+const COMPANION_EVENTS = new Set(['pull_request_target', 'pull_request_review', 'check_run', 'workflow_run']);
+const ACTIONS_APP_SLUG = 'github-actions';
+const RUN_ID_RE = /\/actions\/runs\/(\d+)(?:\/|$)/;
+
+// A run's path can carry the ref it ran from ("file.yml@refs/heads/x").
+const workflowFile = (p) => String(p || '').split('@')[0];
+
+async function isCompanionRun({ github, owner, repo, cr, cache, companionWorkflow }) {
+  if (!companionWorkflow) return false;
+  if (!cr.app || cr.app.slug !== ACTIONS_APP_SLUG) return false;
+  const m = RUN_ID_RE.exec(cr.details_url || '');
+  if (!m) return false;
+  if (!cache.has(m[1])) {
+    cache.set(m[1], github.rest.actions.getWorkflowRun({ owner, repo, run_id: Number(m[1]) })
+      .then(({ data }) => COMPANION_EVENTS.has(data.event) && workflowFile(data.path) === companionWorkflow,
+        () => false));
+  }
+  return cache.get(m[1]);
+}
+
+async function fetchCheckRuns({
+  github, context, owner, repo, headSha, selfJobNames = [], companionWorkflow = DEFAULT_COMPANION_WORKFLOW,
+}) {
   const all = [];
   let page = 1;
   while (true) {
@@ -56,10 +89,23 @@ async function fetchCheckRuns({ github, context, owner, repo, headSha, selfJobNa
     page++;
   }
   const selfRunRe = new RegExp(`/runs/${String(context.runId)}(/|$)`);
-  const selfJobs = new Set(['strspc-pr-approval', ...COMPANION_JOBS, context.job, ...selfJobNames].filter(Boolean));
-  const notSelf = all.filter((cr) => cr != null &&
-    !(cr.details_url && selfRunRe.test(cr.details_url)) &&
-    !(selfJobs.has(cr.name) && cr.status !== 'completed'));
+  // A companion name always goes through the provenance check, even when a
+  // caller named its own job the same: a name shortcut would let CI of that
+  // name through. This run is already dropped by its URL above.
+  const companionJobs = new Set(COMPANION_JOBS);
+  const selfJobs = new Set(['strspc-pr-approval', context.job, ...selfJobNames]
+    .filter((n) => n && !companionJobs.has(n)));
+  const cache = new Map();
+  const notSelf = [];
+  for (const cr of all) {
+    if (cr == null) continue;
+    if (cr.details_url && selfRunRe.test(cr.details_url)) continue;
+    if (cr.status !== 'completed') {
+      if (selfJobs.has(cr.name)) continue;
+      if (companionJobs.has(cr.name) && await isCompanionRun({ github, owner, repo, cr, cache, companionWorkflow })) continue;
+    }
+    notSelf.push(cr);
+  }
   const latest = new Map();
   for (const cr of notSelf) {
     const key = `${cr.name}::${cr.app && cr.app.id}`;
@@ -202,6 +248,8 @@ module.exports = {
   MAX_LISTED_FILES,
   CHECK_OK_CONCLUSIONS,
   COMPANION_JOBS,
+  COMPANION_EVENTS,
+  DEFAULT_COMPANION_WORKFLOW,
   makeApiClient,
   stripApiHost,
   describeError,

@@ -12,17 +12,19 @@
 //   PR_APPROVAL_POLICY_FILE      policy path in the repository (default .strspc/pr-approval.yml)
 //   PR_APPROVAL_DRY_RUN          'true' = decide and report, write nothing
 //   PR_APPROVAL_ALLOW_NO_CHECKS  'true' = a head with no checks may be approved
+//   PR_APPROVAL_COMPANION_WORKFLOW  strspc-pr-review's caller file (empty = the default, 'off' = none)
 
 const defaultKinds = require('./kinds/index.js');
 const { loadPolicy, matchPolicy, requireBlocker, PolicyError } = require('./policy.js');
 const { mergePullRequest } = require('./merge.js');
 const {
   makeApiClient, stripApiHost, describeError, isFailedCheck, fetchCheckRuns, compareHead, dismissReview,
+  DEFAULT_COMPANION_WORKFLOW,
 } = require('./util.js');
 
 const DEFAULT_POLICY_FILE = '.strspc/pr-approval.yml';
 // Every approval carries the marker with the base it was given for, so a
-// retargeted PR loses it (APPROVE-004) and only our own approvals are touched.
+// retargeted PR loses it (APPROVE-004) and only our own approvals are touched (APPROVE-012).
 const MARKER_PREFIX = '<!-- strspc-pr-approval';
 const marker = (base) => `${MARKER_PREFIX} base=${encodeURIComponent(base)} -->`;
 const MARKER = MARKER_PREFIX;
@@ -42,12 +44,21 @@ function markerBase(review) {
 const labelSet = (p) => (p.labels || []).map((l) => (typeof l === 'string' ? l : l.name)).sort().join('\n');
 const truthy = (v) => String(v || '').trim().toLowerCase() === 'true';
 
+function companionWorkflow(value) {
+  const v = String(value || '').trim();
+  if (!v) return DEFAULT_COMPANION_WORKFLOW;
+  return v.toLowerCase() === 'off' ? '' : v;
+}
+
 function readConfig(env = process.env) {
   return {
     botLogin: String(env.PR_APPROVAL_BOT_LOGIN || '').trim(),
     policyFile: String(env.PR_APPROVAL_POLICY_FILE || '').trim() || DEFAULT_POLICY_FILE,
     dryRun: truthy(env.PR_APPROVAL_DRY_RUN),
     allowNoChecks: truthy(env.PR_APPROVAL_ALLOW_NO_CHECKS),
+    // Empty means the default, not off: an unset Actions variable wired to the
+    // input arrives as '' and must not silently drop the exemption.
+    companionWorkflow: companionWorkflow(env.PR_APPROVAL_COMPANION_WORKFLOW),
   };
 }
 
@@ -129,6 +140,7 @@ async function decideInner({
   let pr = null;
   let policy = null;
 
+  // POLICY-007: every line names the policy and the rules it cites.
   const tag = (msg) => (policy ? `[${policy.id}: ${policy.rules.join(', ')}] ${msg}` : msg);
   const finish = async (decision, bareReason, { merged = false } = {}) => {
     const reason = tag(bareReason);
@@ -226,7 +238,7 @@ async function decideInner({
   if (!loaded) return refuse(`no ${cfg.policyFile} on ${pr.base.ref}`);
 
   policy = matchPolicy(loaded.policies, pr, kinds);
-  if (!policy) return refuse('no policy matches this PR'); // POLICY-006
+  if (!policy) return refuse('no policy matches this PR'); // POLICY-008
   const kind = kinds[policy.kind];
   const options = policy.options || {};
   if (policy.approve === false) return refuse('the matching policy approves nothing');
@@ -249,7 +261,9 @@ async function decideInner({
   }
 
   // APPROVE-002
-  const checkRuns = await fetchCheckRuns({ github, context, owner, repo, headSha });
+  const checkRuns = await fetchCheckRuns({
+    github, context, owner, repo, headSha, companionWorkflow: cfg.companionWorkflow,
+  });
   if (checkRuns.length === 0 && !cfg.allowNoChecks) return finish('skip', 'no checks on head SHA yet');
   const bad = checkRuns.find(isFailedCheck);
   if (bad) return refuse(`failing check: ${bad.name} (${bad.conclusion})`);

@@ -30,13 +30,14 @@ than 3 or with a cycle are refused (POLICY-003).
 
 Each policy cites the prose rules it enforces. At load time every cited ID must exist, not withdrawn,
 in the realm its own file names (`<realm>/<ENTITY>.json`). Reviews, logs and the `reason` output quote
-them (POLICY-005). The realm is the human-readable contract; the policy is its executable form.
+them (POLICY-007). The realm is the human-readable contract; the policy is its executable form.
 
 ## Order
 
 The root file's policies come first, in file order; a root policy with the `id` of an inherited one
 replaces it. Inherited policies follow, in `extends` order. The first policy whose `match` the PR
-satisfies applies (POLICY-006). A PR no policy matches is left alone.
+satisfies applies (POLICY-006). A PR no policy matches is left alone, except that an approval this
+action gave it earlier is withdrawn (POLICY-008).
 
 ## match
 

@@ -190,10 +190,17 @@ const assertNoWrites = (h) => {
 test('readConfig defaults', () => {
   assert.deepEqual(decide.readConfig({}), {
     botLogin: '', policyFile: decide.DEFAULT_POLICY_FILE, dryRun: false, allowNoChecks: false,
+    companionWorkflow: '.github/workflows/auto-approve.yml',
   });
+  assert.equal(decide.readConfig({ PR_APPROVAL_COMPANION_WORKFLOW: '  ' }).companionWorkflow,
+    '.github/workflows/auto-approve.yml');
+  assert.equal(decide.readConfig({ PR_APPROVAL_COMPANION_WORKFLOW: ' OFF ' }).companionWorkflow, '');
+  assert.equal(decide.readConfig({ PR_APPROVAL_COMPANION_WORKFLOW: ' .github/workflows/pr.yml ' }).companionWorkflow,
+    '.github/workflows/pr.yml');
   assert.deepEqual(decide.readConfig({
     PR_APPROVAL_BOT_LOGIN: ' b ', PR_APPROVAL_POLICY_FILE: 'x.yml', PR_APPROVAL_DRY_RUN: 'TRUE', PR_APPROVAL_ALLOW_NO_CHECKS: 'true',
-  }), { botLogin: 'b', policyFile: 'x.yml', dryRun: true, allowNoChecks: true });
+  }), { botLogin: 'b', policyFile: 'x.yml', dryRun: true, allowNoChecks: true,
+    companionWorkflow: '.github/workflows/auto-approve.yml' });
 });
 
 test('an empty bot-login fails the job', async () => {
@@ -299,7 +306,7 @@ test('POLICY-004: an API error reading the policy is not a policy error; decide(
   assertNoWrites(h);
 });
 
-test('POLICY-006: no policy file on the base branch means no action', async () => {
+test('POLICY-008: no policy file on the base branch means no action', async () => {
   const h = await run({ files: realmFiles });
   assert.deepEqual([h.result.decision, h.result.reason], ['skip', 'no .strspc/pr-approval.yml on main']);
   assertNoWrites(h);
@@ -322,7 +329,7 @@ test('POLICY-005: a policy citing a withdrawn rule fails the job', async () => {
   assertNoWrites(h);
 });
 
-test('POLICY-006: no matching policy means no action beyond withdrawing an approval of ours', async () => {
+test('POLICY-008: no matching policy means no action beyond withdrawing an approval of ours', async () => {
   const pr = { head: { ...basePr().head, ref: 'feature/x' } };
   const clean = await run({ pr });
   assert.deepEqual([clean.result.decision, clean.result.reason], ['skip', 'no policy matches this PR']);
@@ -548,7 +555,7 @@ test('APPROVE-003: a base rewritten during evaluation skips', async () => {
   assert.equal(h.calls.createReview.length, 0);
 });
 
-test('APPROVE-003 + POLICY-005: approves the evaluated head, citing the policy and its rules', async () => {
+test('APPROVE-003 + POLICY-007: approves the evaluated head, citing the policy and its rules', async () => {
   const h = await run({ summary: true, kindOpts: { evaluate: () => ({ ok: true, summary: 'release 1.2.0', mergeBase: 'mb' }) } });
   assert.equal(h.result.decision, 'approved');
   assert.equal(h.result.reason, '[release: APPROVE-006, MERGE-001] release 1.2.0');
@@ -704,7 +711,7 @@ test('APPROVE-004: an approval given for another base is withdrawn (retargeted P
   assert.match(h.calls.dismissReview[0].message, /new head or base/);
 });
 
-test('approvals by the same account without our marker (strspc-pr-review) are never dismissed', async () => {
+test('APPROVE-012: approvals by the same account without our marker (strspc-pr-review) are never dismissed', async () => {
   const foreign = { id: 91, user: { login: BOT }, state: 'APPROVED', commit_id: 'old', body: 'Auto-approved: copilot-clean.' };
   const h = await run({ reviews: [foreign], checkRuns: [{ id: 1, name: 'ci', app: { id: 1 }, status: 'completed', conclusion: 'failure' }] });
   assert.match(h.result.reason, /failing check/);

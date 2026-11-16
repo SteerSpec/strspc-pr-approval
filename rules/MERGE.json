@@ -6,25 +6,25 @@
     "description": "When the action may merge a pull request it approved, and how."
   },
   "rule_set": {
-    "version": "0.1.5",
-    "timestamp": "2026-11-09T17:58:12Z",
-    "hash": "blake3:2f5dae584b9c8d074328a7a861c088c84578b45a9f2b78ef887cd7f52fd58a06"
+    "version": "0.1.8",
+    "timestamp": "2026-11-15T17:51:02Z",
+    "hash": "blake3:8e3cb921d7d772f5d141f809c25234ab5324a31d8799ea94e81165e7e6b81d00"
   },
   "rules": [
     {
       "id": "MERGE-001",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "The action MUST NOT merge a pull request unless the matching policy enables merging, and merging MUST be disabled by default.",
+      "body": "The action MUST NOT merge a pull request unless the matching policy enables merging, which is off by default.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null
     },
     {
       "id": "MERGE-002",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "The action MUST merge with the configured merge token and MUST NOT merge with the workflow GITHUB_TOKEN, because a merge by that token starts no workflow.",
+      "body": "The action MUST NOT merge with the workflow GITHUB_TOKEN, only with the configured merge token, because a merge by that token starts no workflow.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null
@@ -40,9 +40,9 @@
     },
     {
       "id": "MERGE-004",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "The action MUST use the merge method the policy names, or else the one the base branch rules allow, and MUST NOT merge when the two disagree.",
+      "body": "The action MUST merge only with the method the policy names, or else the single method the base branch rules allow, refusing to merge when the two disagree or no single method is allowed.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null

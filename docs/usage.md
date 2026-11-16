@@ -7,12 +7,18 @@ Back to the [README](../README.md).
 | What | Why | Where |
 |---|---|---|
 | Approving account (e.g. a machine user) | Posts the APPROVE review. Must not be the account that opens the PRs: GitHub rejects self-approval | variable `STRSPC_PR_APPROVAL_BOT_LOGIN` |
-| Its PAT, `Pull requests: write` | Posting and dismissing approvals, nothing else | secret `BOT_GITHUB_TOKEN` |
+| Its PAT, `Pull requests: write` | Posting and dismissing approvals, nothing else | secret `PR_APPROVAL_BOT_TOKEN` |
 | A GitHub App with `contents: write`, `pull-requests: write` | Merging. Only needed when a policy enables `merge` | secrets `STEERSPEC_APP_ID`, `STEERSPEC_PRIVATE_KEY`, variable `STRSPC_PR_APPROVAL_MERGE=true` |
 
-Reads use the workflow `GITHUB_TOKEN`. Under the SteerSpec org the approving account is the same one
-strspc-pr-review uses; the two actions never act on the same PR (see
-[how-it-works.md](how-it-works.md#living-next-to-strspc-pr-review)).
+Reads use the workflow `GITHUB_TOKEN`.
+
+Give the approving account and its secret to this action alone, rather than reusing the account
+strspc-pr-review approves with. Its approvals reach the branch releases ship from, so its token
+should be readable only by the repositories that run this action (an organization secret's
+repository access). To make GitHub itself require that account on `main`, put it in a team, list
+the team in `CODEOWNERS`, and require code-owner review in the `main` ruleset only. Sharing one
+account still works: the two actions never act on the same PR, and this one withdraws only the
+approvals it marked (see [how-it-works.md](how-it-works.md#living-next-to-strspc-pr-review)).
 
 If the App must also be allowed to merge past a ruleset, add it to the ruleset's bypass list *only*
 for the merge method that ruleset allows — the action already refuses to merge with any other

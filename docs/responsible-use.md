@@ -22,7 +22,7 @@ count. Keep push access tight, and review access grants as you would a merge.
 ## Known limit: who can reach the tokens
 
 The caller listens to `pull_request_review`, which runs the workflow definition from the PR, so
-anyone who can push a branch to the repository can reach `BOT_GITHUB_TOKEN` and the App key from a
+anyone who can push a branch to the repository can reach `PR_APPROVAL_BOT_TOKEN` and the App key from a
 same-repository PR. That is no new exposure: the same people can already read repository secrets
 from any `push`-triggered workflow on their branch. If that is too wide for you, keep both secrets in
 a deployment environment restricted to the default branch and add `environment:` to the job.

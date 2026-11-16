@@ -10,7 +10,8 @@ serialized per PR. Every step is an API call; nothing from the PR is checked out
    approving account.
 3. **Load the policy from the base branch** (POLICY-001), resolve `extends:` (tags/SHAs only,
    POLICY-002/003), validate (POLICY-004), check every cited rule ID against its realm (POLICY-005).
-4. **Match** the first policy (POLICY-006). No match: the PR is not this action's business.
+4. **Match** the first policy (POLICY-006). No match: the action takes no action beyond withdrawing an
+   approval of its own, if it gave one (POLICY-008).
 5. **Tip check** for kinds whose proof covers a branch (promotion, release).
 6. **Withdraw** our approvals of older heads (APPROVE-004).
 7. **Checks**: none yet waits (unless `allow-no-checks`); a failing one refuses and withdraws; a
@@ -32,6 +33,16 @@ strspc-pr-review approves PRs once Copilot's review is clean. Copilot does not r
 acting on the same PR, give strspc-pr-review `exclude-heads`/`exclude-bases` matching the policies
 here (or keep its `base-branch` to `develop` and the bot heads out of it), and unset its deprecated
 `promotion-branches`, `release-branches` and `release-author`.
+
+The two also run on the same events, so each finds the other's job still running. This action
+therefore ignores an unfinished `auto-approve` check (strspc-pr-review's job id), just as it ignores
+its own; a finished one counts like any other check (APPROVE-002). A name alone proves nothing, so
+the check must also come from a GitHub Actions run of the `companion-workflow` file (default
+`.github/workflows/auto-approve.yml`) started by `pull_request_target`, `pull_request_review`,
+`check_run` or `workflow_run`. CI runs on `pull_request`, `push` or
+`merge_group`, so a CI job that happens to share the name is still waited for. The lookup needs
+`actions: read`; without it, the check counts as pending. strspc-pr-review must do the
+same for `strspc-pr-approval`, or its PRs stall on this job.
 
 ## Why a policy file and a realm
 

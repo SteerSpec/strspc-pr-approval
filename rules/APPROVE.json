@@ -6,9 +6,9 @@
     "description": "When the action may approve a pull request, and when it must refuse or take an approval back."
   },
   "rule_set": {
-    "version": "0.1.11",
-    "timestamp": "2026-11-09T17:58:12Z",
-    "hash": "blake3:6b71ba0313b61d01669369346ab0f81c80935de10e0d477e52a4349623460582"
+    "version": "0.1.18",
+    "timestamp": "2026-11-15T18:23:50Z",
+    "hash": "blake3:5d52fd278cdd03adc5761ba205d952159ca2741623b28661a835288f6621697b"
   },
   "rules": [
     {
@@ -22,27 +22,27 @@
     },
     {
       "id": "APPROVE-002",
-      "revision": 0,
+      "revision": 2,
       "state": "D",
-      "body": "The action MUST NOT approve a pull request while any check on its head is unfinished or has concluded with anything other than success, neutral, skipped, cancelled or stale, ignoring the runs of its own job.",
+      "body": "The action MUST NOT approve a pull request while any check on its head is unfinished or has concluded with anything other than success, neutral, skipped, cancelled or stale, ignoring only unfinished runs of its own job and unfinished strspc-pr-review auto-approve runs that GitHub Actions started from the configured companion workflow file for pull_request_target, pull_request_review, check_run or workflow_run, since both gate approval rather than test the code.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null
     },
     {
       "id": "APPROVE-003",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "The action MUST re-read the head, base, title and draft state of a pull request before and after approving it, and MUST withdraw its approval when any of them changed.",
+      "body": "The action MUST re-read the head, base, title and draft state of a pull request before and after approving it, withdrawing its approval when any of them changed.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null
     },
     {
       "id": "APPROVE-004",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "The action MUST withdraw an earlier approval of its own given for a different head or a different base before it evaluates a pull request, and MUST NOT withdraw an approval it did not give.",
+      "body": "The action MUST withdraw an earlier approval of its own given for a different head or a different base before it evaluates a pull request.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null
@@ -94,20 +94,29 @@
     },
     {
       "id": "APPROVE-010",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "A policy MAY tighten the conditions of a built-in kind and MUST NOT be able to relax them.",
+      "body": "A policy MUST NOT be able to relax the conditions of a built-in kind, only to tighten them.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null
     },
     {
       "id": "APPROVE-011",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "An evaluator veto MAY block an approval or downgrade a pull request to needing a human, and MUST NOT approve or merge a pull request.",
+      "body": "An evaluator veto MUST NOT approve or merge a pull request, only block an approval or downgrade the pull request to needing a human.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-012",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST NOT withdraw an approval it did not give.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-15",
       "supersedes": null
     }
   ],

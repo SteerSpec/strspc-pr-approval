@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.1](https://github.com/SteerSpec/strspc-pr-approval/compare/v1.0.0...v1.0.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* an empty companion-workflow means the default, 'off' disables it ([#10](https://github.com/SteerSpec/strspc-pr-approval/issues/10)) ([3ac2f3b](https://github.com/SteerSpec/strspc-pr-approval/commit/3ac2f3b940effae3495cef61f2ab725b2c7d38ac))
+* identify strspc-pr-review's job by its run, not its name alone ([#9](https://github.com/SteerSpec/strspc-pr-approval/issues/9)) ([a9e928b](https://github.com/SteerSpec/strspc-pr-approval/commit/a9e928b109623163fc84e4a3d7627b43447c7946))
+* ignore strspc-pr-review's unfinished auto-approve check ([#7](https://github.com/SteerSpec/strspc-pr-approval/issues/7)) ([76abeec](https://github.com/SteerSpec/strspc-pr-approval/commit/76abeec4c3d858592c27ae09f40f8ac5ce4b9c4c))
+
 ## 1.0.0 (2026-11-10)
 
 

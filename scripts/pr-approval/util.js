@@ -52,8 +52,8 @@ const COMPANION_JOBS = ['auto-approve'];
 // an event an approver listens to; CI runs on pull_request, push or
 // merge_group. These events run the workflow from the default branch, except
 // pull_request_review, which a same-repository PR could define; that PR author
-// already controls its own CI, so it gains nothing. An empty
-// companion-workflow turns the exemption off. Anything unproven, a failed
+// already controls its own CI, so it gains nothing. companion-workflow 'off'
+// (an empty value here) turns the exemption off. Anything unproven, a failed
 // lookup included, still counts as pending.
 const DEFAULT_COMPANION_WORKFLOW = '.github/workflows/auto-approve.yml';
 const COMPANION_EVENTS = new Set(['pull_request_target', 'pull_request_review', 'check_run', 'workflow_run']);

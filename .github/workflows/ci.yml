@@ -38,7 +38,10 @@ jobs:
       pull-requests: read
 
   # PRs are squashed into develop, so the title can become the commit
-  # release-please reads; a mistyped title is a wrong release.
+  # release-please reads; a mistyped title is a wrong release. A promotion into
+  # main is merged with a merge commit, so its title never becomes a commit and
+  # need not match a lone commit: it stays `chore: promote develop to main`,
+  # which strspc-pr-review requires of a promotion.
   commits:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -49,8 +52,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          validateSingleCommit: true
-          validateSingleCommitMatchesPrTitle: true
+          validateSingleCommit: ${{ github.base_ref != 'main' }}
+          validateSingleCommitMatchesPrTitle: ${{ github.base_ref != 'main' }}
       # Same limit as header-max-length in .commitlintrc.yml, counted in UTF-16
       # code units like commitlint. Read through the API because a re-run keeps
       # its original event's title.

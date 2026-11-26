@@ -88,6 +88,7 @@ function harness(o = {}) {
         listReviews: async () => {
           calls.listReviews++;
           if (o.listReviewsError) throw o.listReviewsError;
+          if ((o.listReviewsFailAt || []).includes(calls.listReviews)) throw httpError(502, 'bad gateway');
           // lateReviews: [{ from, review }] appears from the `from`th listing on.
           for (const late of o.lateReviews || []) {
             if (calls.listReviews >= late.from && !reviews.some((r) => r.id === late.review.id)) reviews.push({ ...late.review });
@@ -573,6 +574,42 @@ test('APPROVE-013: one that lands while approving withdraws the new approval', a
   assert.equal(h.calls.createReview.length, 1);
   assert.match(h.result.reason, /vetoed: Copilot's latest review \(86\).* while approving; approval withdrawn/);
   assert.equal(h.calls.dismissReview.length, 1);
+});
+
+test('APPROVE-013: a veto that throws withdraws our approval before the error surfaces', async () => {
+  const h = harness({ reviews: [ourApproval(87, HEAD)] });
+  const result = await decide({ github: h.github, context: h.context, core: h.core, env: h.env, kinds: h.kinds, merge: h.merge, vetoes: [async () => { throw httpError(500, 'veto down'); }] });
+  assert.equal(result.decision, 'skip');
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [87]);
+  assert.match(h.calls.dismissReview[0].message, /a veto could not be evaluated \(500 veto down\)/);
+  assert.equal(h.calls.createReview.length, 0);
+});
+
+test('APPROVE-013: a failed re-read of the reviews before approving withdraws, then surfaces', async () => {
+  // Listing 1 is the veto stage, 2 the re-read that fails, 3 the withdrawal.
+  const h = harness({ reviews: [ourApproval(88, HEAD)], listReviewsFailAt: [2] });
+  const result = await decide({ github: h.github, context: h.context, core: h.core, env: h.env, kinds: h.kinds, merge: h.merge });
+  assert.equal(result.decision, 'skip');
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [88]);
+  assert.match(h.calls.dismissReview[0].message, /Copilot's review could not be re-read \(502 bad gateway\)/);
+  assert.equal(h.calls.createReview.length, 0);
+});
+
+test('APPROVE-013: merge() gets the veto, and a hit there withdraws the approval on the head', async () => {
+  const vetoed = "vetoed: Copilot's latest review (89) has verdict 'x'";
+  const h = await run({ reviews: [ourApproval(90, HEAD)], policy: { merge: { enabled: true } }, mergeResult: { merged: false, reason: vetoed, vetoed: true } });
+  assert.equal(typeof h.mergeCalls[0].vetoBlocker, 'function');
+  assert.equal(await h.mergeCalls[0].vetoBlocker(), '');
+  assert.equal(h.result.decision, 'skip');
+  assert.match(h.result.reason, /vetoed: .* before merging; approval withdrawn/);
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [90]);
+});
+
+test('APPROVE-013: a veto error inside merge() withdraws, then surfaces', async () => {
+  const h = harness({ reviews: [ourApproval(91, HEAD)], policy: { merge: { enabled: true } }, mergeResult: { merged: false, reason: 'x', vetoError: httpError(502, 'bad gateway') } });
+  const result = await decide({ github: h.github, context: h.context, core: h.core, env: h.env, kinds: h.kinds, merge: h.merge });
+  assert.equal(result.decision, 'skip');
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [91]);
 });
 
 // --- dry run ----------------------------------------------------------------------

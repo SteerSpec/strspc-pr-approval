@@ -110,7 +110,7 @@ jobs:
           permission-pull-requests: write
 
       # Pinned to a commit SHA, not @v1: see the top of this file.
-      - uses: SteerSpec/strspc-pr-approval@1ad24e6cbabca756c3c1c01a12564b33dd03a200 # v1.1.0
+      - uses: SteerSpec/strspc-pr-approval@89956fa41a326ff9acd51ee4309aa436416eea26 # v1.2.0
         with:
           bot-login: ${{ vars.STRSPC_PR_APPROVAL_BOT_LOGIN }}
           approve-token: ${{ secrets.PR_APPROVAL_BOT_TOKEN }}

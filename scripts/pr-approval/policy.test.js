@@ -105,7 +105,7 @@ test('POLICY-004: a valid file has no errors', () => {
   assert.deepEqual(errorsOf(file([pol('a', {
     description: 'x',
     match: { base: 'main', head: ['a', 'b'], authors: ['bot'], title: '^chore', labels: ['l'] },
-    require: { checks: ['c'], paths: ['p'], 'forbid-paths': ['f'], 'max-files': 0, 'max-additions': 1, 'max-deletions': 2, 'no-labels': ['n'] },
+    require: { checks: ['c'], paths: ['p'], 'forbid-paths': ['f'], 'max-files': 0, 'max-additions': 1, 'max-deletions': 2, 'no-labels': ['n'], 'copilot-review': 'clean' },
     options: {},
     approve: true,
     merge: { enabled: true, method: 'squash' },
@@ -195,6 +195,7 @@ test('MERGE-001: merge block errors', () => {
   expectError(file([pol('a', { merge: { auto: 1 } })]), /merge: unknown key 'auto'/);
   expectError(file([pol('a', { merge: { enabled: 'yes' } })]), /merge\.enabled: must be true or false/);
   expectError(file([pol('a', { merge: { method: 'ff' } })]), /merge\.method: must be one of merge, squash, rebase/);
+  expectError(file([pol('a', { require: { 'copilot-review': true } })]), /require\.copilot-review: must be one of clean/);
 });
 
 test('POLICY-004: the validator and schema/pr-approval.v1.json agree on the keys', () => {

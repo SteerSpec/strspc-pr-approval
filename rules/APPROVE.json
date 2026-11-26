@@ -6,9 +6,9 @@
     "description": "When the action may approve a pull request, and when it must refuse or take an approval back."
   },
   "rule_set": {
-    "version": "0.1.18",
-    "timestamp": "2026-11-15T18:23:50Z",
-    "hash": "blake3:5d52fd278cdd03adc5761ba205d952159ca2741623b28661a835288f6621697b"
+    "version": "0.1.19",
+    "timestamp": "2026-11-26T13:43:45Z",
+    "hash": "blake3:53f010ac5793bccab4261fec3adc3c4da368b03e8b50707ebd60bd34d5983ca2"
   },
   "rules": [
     {
@@ -117,6 +117,15 @@
       "body": "The action MUST NOT withdraw an approval it did not give.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-15",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-013",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST NOT approve a pull request whose latest Copilot review is anything other than an Approval recommended overview listing no open issue, or, when its policy sets require.copilot-review, before Copilot has reviewed its head.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-26",
       "supersedes": null
     }
   ],

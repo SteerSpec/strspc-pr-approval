@@ -16,6 +16,7 @@
 
 const defaultKinds = require('./kinds/index.js');
 const { loadPolicy, matchPolicy, requireBlocker, PolicyError } = require('./policy.js');
+const { copilotVeto } = require('./copilot.js');
 const { mergePullRequest } = require('./merge.js');
 const {
   makeApiClient, stripApiHost, describeError, isFailedCheck, fetchCheckRuns, compareHead, dismissReview,
@@ -63,9 +64,10 @@ function readConfig(env = process.env) {
 }
 
 // Vetoes run after every approving check and can only refuse (APPROVE-011).
-// v1 ships none; the v1.1 evaluator plugs in here. Each is
+// Copilot's latest review is the first (APPROVE-013); the v1.1 evaluator plugs
+// in here too. Each is
 //   async (ctx) => null | { reason, downgrade?: boolean }
-const DEFAULT_VETOES = [];
+const DEFAULT_VETOES = [copilotVeto];
 
 async function decide(args) {
   const { core } = args;
@@ -277,7 +279,8 @@ async function decideInner({
     }
     return compared;
   };
-  const ctx = { github, owner, repo, pr, policy, options, compare, checkRuns, core, botLogin: cfg.botLogin };
+  const listReviews = async () => reviews || loadReviews();
+  const ctx = { github, owner, repo, pr, policy, options, compare, checkRuns, listReviews, core, botLogin: cfg.botLogin };
 
   // The kind's own proof (APPROVE-005..009).
   let proof;
@@ -294,7 +297,8 @@ async function decideInner({
   if (policy.require) {
     const needsFiles = ['paths', 'forbid-paths', 'max-files', 'max-additions', 'max-deletions'].some((k) => k in policy.require);
     const files = needsFiles ? (await compare()).files : null;
-    const blocked = requireBlocker({ pr, require: policy.require, files, checkRuns });
+    const prReviews = 'copilot-review' in policy.require ? await listReviews() : null;
+    const blocked = requireBlocker({ pr, require: policy.require, files, checkRuns, reviews: prReviews });
     if (blocked) return refuse(blocked);
   }
 

@@ -499,6 +499,48 @@ test('APPROVE-011: a downgrading veto says the PR needs a human; a null veto is 
   assert.equal(passes.result.decision, 'approved');
 });
 
+const COPILOT = 'copilot-pull-request-reviewer[bot]';
+const CLEAN_OVERVIEW = '<!-- ccr-overview-v2 -->\n\n### 🟢 Approval recommended\n\nLooks right.\n\n**No open issues** 🎉\n';
+const FLAGGED_OVERVIEW = '<!-- ccr-overview-v2 -->\n\n### 🟡 Changes recommended\n\nDrops the npm ecosystem.\n\n<details open>\n<summary><strong>1 open issue</strong></summary>\n\n- Keep majors out\n</details>\n';
+const copilotReview = (id, commit, body, at = `2026-11-25T13:${String(id % 60).padStart(2, '0')}:00Z`) =>
+  ({ id, user: { login: COPILOT }, state: 'COMMENTED', commit_id: commit, body, submitted_at: at });
+
+test('APPROVE-013: Copilot flagging the PR vetoes and withdraws our approval', async () => {
+  const h = await run({ reviews: [ourApproval(71, HEAD), copilotReview(72, HEAD, FLAGGED_OVERVIEW)] });
+  assert.equal(h.result.decision, 'skip');
+  assert.equal(h.result.reason, "[release: APPROVE-006, MERGE-001] vetoed: Copilot's latest review (72) has verdict '🟡 Changes recommended'");
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [71]);
+  assert.equal(h.calls.createReview.length, 0);
+});
+
+test('APPROVE-013: only Copilot\'s latest review counts, on whichever commit', async () => {
+  const fixed = await run({ reviews: [copilotReview(73, OLD, FLAGGED_OVERVIEW, '2026-11-25T13:00:00Z'), copilotReview(74, HEAD, CLEAN_OVERVIEW, '2026-11-25T14:00:00Z')] });
+  assert.equal(fixed.result.decision, 'approved');
+  const stale = await run({ reviews: [copilotReview(75, OLD, FLAGGED_OVERVIEW)] });
+  assert.match(stale.result.reason, /vetoed: Copilot's latest review \(75\) has verdict/);
+});
+
+test('APPROVE-013: a review from a lookalike login or a green verdict over open issues', async () => {
+  const lookalike = await run({ reviews: [{ ...copilotReview(76, HEAD, FLAGGED_OVERVIEW), user: { login: 'copilot-fan[bot]' } }] });
+  assert.equal(lookalike.result.decision, 'approved');
+  const greenOverIssue = CLEAN_OVERVIEW.replace('**No open issues** 🎉\n', '<details>\n<summary><strong>2 open issues</strong></summary>\n</details>\n');
+  const h = await run({ reviews: [copilotReview(77, HEAD, greenOverIssue)] });
+  assert.match(h.result.reason, /vetoed: Copilot's latest review \(77\) lists 2 open issue\(s\)/);
+});
+
+test('APPROVE-013: require.copilot-review waits for a review of the head itself', async () => {
+  const policy = { require: { 'copilot-review': 'clean' } };
+  const none = await run({ policy });
+  assert.equal(none.result.reason, '[release: APPROVE-006, MERGE-001] Copilot has not reviewed the PR yet');
+  const older = await run({ policy, reviews: [copilotReview(78, OLD, CLEAN_OVERVIEW)] });
+  assert.match(older.result.reason, /Copilot's latest review is of b2b2b2b2, not the head a1a1a1a1/);
+  const flagged = await run({ policy, reviews: [copilotReview(79, HEAD, FLAGGED_OVERVIEW)] });
+  assert.match(flagged.result.reason, /vetoed: Copilot's latest review \(79\)/);
+  const clean = await run({ policy, reviews: [copilotReview(80, HEAD, CLEAN_OVERVIEW)] });
+  assert.equal(clean.result.decision, 'approved');
+  assert.equal(none.calls.createReview.length + older.calls.createReview.length + flagged.calls.createReview.length, 0);
+});
+
 // --- dry run ----------------------------------------------------------------------
 
 test('dry-run decides and writes nothing', async () => {
@@ -506,7 +548,9 @@ test('dry-run decides and writes nothing', async () => {
   assert.equal(h.result.decision, 'dry-run');
   assert.equal(h.result.reason, '[release: APPROVE-006, MERGE-001] would approve and would merge: release 1.2.0');
   assertNoWrites(h);
-  assert.equal(h.calls.listReviews, 0);
+  // One read: the Copilot veto (APPROVE-013). Withdrawals, which also list
+  // reviews, are skipped in a dry run.
+  assert.equal(h.calls.listReviews, 1);
 });
 
 test('dry-run refusals write nothing either', async () => {

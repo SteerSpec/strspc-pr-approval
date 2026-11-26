@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/SteerSpec/strspc-pr-approval/compare/v1.1.0...v1.2.0) (2026-11-26)
+
+
+### Features
+
+* sweep the open PRs on a schedule when their re-trigger never came ([#24](https://github.com/SteerSpec/strspc-pr-approval/issues/24)) ([336967e](https://github.com/SteerSpec/strspc-pr-approval/commit/336967e9c1a9e4cb37076b741ca5969d22cf071e))
+
 ## [1.1.0](https://github.com/SteerSpec/strspc-pr-approval/compare/v1.0.1...v1.1.0) (2026-11-26)
 
 

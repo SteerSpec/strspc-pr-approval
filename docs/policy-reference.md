@@ -61,6 +61,7 @@ Conditions on top of the kind's own checks. They can only refuse (APPROVE-010).
 | `forbid-paths` | a changed file matches one of the globs |
 | `max-files`, `max-additions`, `max-deletions` | the diff is larger |
 | `no-labels` | the PR carries one of the labels |
+| `copilot-review: clean` | Copilot has not reviewed the head yet (APPROVE-013). Whether that review is clean is the Copilot veto's call, which applies to every policy ([how-it-works.md](how-it-works.md#copilots-review-as-a-veto)) |
 
 ## Kinds
 

@@ -16,6 +16,7 @@
 
 const defaultKinds = require('./kinds/index.js');
 const { loadPolicy, matchPolicy, requireBlocker, PolicyError } = require('./policy.js');
+const { copilotVeto, copilotRequireBlocker } = require('./copilot.js');
 const { mergePullRequest } = require('./merge.js');
 const {
   makeApiClient, stripApiHost, describeError, isFailedCheck, fetchCheckRuns, compareHead, dismissReview,
@@ -63,9 +64,10 @@ function readConfig(env = process.env) {
 }
 
 // Vetoes run after every approving check and can only refuse (APPROVE-011).
-// v1 ships none; the v1.1 evaluator plugs in here. Each is
+// Copilot's latest review is the first (APPROVE-013); the v1.1 evaluator plugs
+// in here too. Each is
 //   async (ctx) => null | { reason, downgrade?: boolean }
-const DEFAULT_VETOES = [];
+const DEFAULT_VETOES = [copilotVeto];
 
 async function decide(args) {
   const { core } = args;
@@ -277,7 +279,8 @@ async function decideInner({
     }
     return compared;
   };
-  const ctx = { github, owner, repo, pr, policy, options, compare, checkRuns, core, botLogin: cfg.botLogin };
+  const listReviews = async () => reviews || loadReviews();
+  const ctx = { github, owner, repo, pr, policy, options, compare, checkRuns, listReviews, core, botLogin: cfg.botLogin };
 
   // The kind's own proof (APPROVE-005..009).
   let proof;
@@ -294,13 +297,22 @@ async function decideInner({
   if (policy.require) {
     const needsFiles = ['paths', 'forbid-paths', 'max-files', 'max-additions', 'max-deletions'].some((k) => k in policy.require);
     const files = needsFiles ? (await compare()).files : null;
-    const blocked = requireBlocker({ pr, require: policy.require, files, checkRuns });
+    const prReviews = 'copilot-review' in policy.require ? await listReviews() : null;
+    const blocked = requireBlocker({ pr, require: policy.require, files, checkRuns, reviews: prReviews });
     if (blocked) return refuse(blocked);
   }
 
-  // APPROVE-011: vetoes can only refuse.
+  // APPROVE-011: vetoes can only refuse. A veto that cannot be evaluated
+  // takes back any approval of ours, like a kind that throws.
   for (const veto of vetoes) {
-    const v = await veto(ctx);
+    let v;
+    try {
+      v = await veto(ctx);
+    } catch (err) {
+      const failed = await withdraw(() => true, `Withdrawn: ${tag(`a veto could not be evaluated (${describeError(err)})`)}.`);
+      if (failed) return failed;
+      throw err;
+    }
     if (v && v.reason) return refuse(`${v.downgrade ? 'needs a human' : 'vetoed'}: ${v.reason}`);
   }
 
@@ -328,10 +340,38 @@ async function decideInner({
     }
     return '';
   };
+  // APPROVE-013: a Copilot review can land while this run evaluates, so the
+  // veto and require.copilot-review are judged again on a fresh review list,
+  // right before and right after the approval.
+  // A failed read throws; callers withdraw before rethrowing, so an approval
+  // never outlives a check that could not run.
+  const copilotNow = async () => {
+    const fresh = await loadReviews();
+    if (policy.require && 'copilot-review' in policy.require) {
+      const missing = copilotRequireBlocker({ reviews: fresh, headSha });
+      if (missing) return missing;
+    }
+    const veto = await copilotVeto({ ...ctx, listReviews: async () => fresh });
+    return veto ? `vetoed: ${veto.reason}` : '';
+  };
+  const withdrawAndThrow = async (err) => {
+    const failed = await withdraw(() => true, `Withdrawn: ${tag(`Copilot's review could not be re-read (${describeError(err)})`)}.`);
+    if (failed) return failed;
+    throw err;
+  };
   {
     const { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
     const why = await changed(current);
     if (why) return finish('skip', `${why} during evaluation; the next run re-evaluates it`);
+    // A refusal, not a skip: the run Copilot's review starts may never come,
+    // so an approval of ours on this head is withdrawn now.
+    let copilot;
+    try {
+      copilot = await copilotNow();
+    } catch (err) {
+      return withdrawAndThrow(err);
+    }
+    if (copilot) return refuse(copilot);
   }
 
   reviews = reviews || await loadReviews();
@@ -352,7 +392,7 @@ async function decideInner({
     let why;
     try {
       const { data: after } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
-      why = await changed(after);
+      why = await changed(after) || await copilotNow();
     } catch (err) {
       why = `could not re-read the PR after approving (${describeError(err)})`;
     }
@@ -366,9 +406,17 @@ async function decideInner({
   if (!(policy.merge && policy.merge.enabled)) {
     return finish('approved', alreadyApproved ? `already approved: ${summary}` : summary);
   }
+  // APPROVE-013 holds at the moment of merging too: merge() asks again right
+  // before the merge call, after any wait for mergeability to settle.
   const result = await merge({
     github, mergeGithub, owner, repo, pr, headSha, policy, kind, ctx, core, justApproved: !alreadyApproved,
+    vetoBlocker: copilotNow,
   });
+  if (result.vetoed) {
+    const failed = await withdraw((r) => r.commit_id === headSha, `Withdrawn: ${tag(result.reason)} before merging.`);
+    return failed || finish('skip', `${result.reason} before merging; approval withdrawn`);
+  }
+  if (result.vetoError) return withdrawAndThrow(result.vetoError);
   if (result.merged) return finish('merged', `${summary}; merged (${result.method})`, { merged: true });
   return finish('approved', `${summary}; not merged: ${result.reason}`);
 }

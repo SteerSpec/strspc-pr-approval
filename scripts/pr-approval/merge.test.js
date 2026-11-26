@@ -354,3 +354,29 @@ test('MERGE-005: the kind mergeBlocker runs after the PR is re-read', async () =
   await mergePullRequest(args);
   assert.deepEqual(order, ['get', 'blocker']);
 });
+
+// --- APPROVE-013 at the moment of merging -------------------------------------
+
+test('APPROVE-013: the veto is asked after the settle wait, and a hit merges nothing', async () => {
+  const { args, calls } = sequence(['blocked', 'clean']);
+  const order = [];
+  const r = await mergePullRequest({
+    ...args, justApproved: true, sleep: async () => { order.push('sleep'); },
+    vetoBlocker: async () => { order.push('veto'); return "vetoed: Copilot's latest review (9) has verdict 'x'"; },
+  });
+  assert.deepEqual(order, ['sleep', 'veto']);
+  assert.deepEqual(r, { merged: false, reason: "vetoed: Copilot's latest review (9) has verdict 'x'", vetoed: true });
+  assert.equal(calls.merge.length, 0);
+});
+
+test('APPROVE-013: a veto that cannot be evaluated merges nothing and hands the error back', async () => {
+  const { args, calls } = setup();
+  const err = httpError(502, 'bad gateway');
+  const r = await mergePullRequest({ ...args, vetoBlocker: async () => { throw err; } });
+  assert.equal(r.merged, false);
+  assert.equal(r.vetoError, err);
+  assert.match(r.reason, /the veto could not be evaluated: 502 bad gateway/);
+  assert.equal(calls.merge.length, 0);
+  const clean = await mergePullRequest({ ...setup().args, vetoBlocker: async () => '' });
+  assert.equal(clean.merged, true);
+});

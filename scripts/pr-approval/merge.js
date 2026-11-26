@@ -116,6 +116,9 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function mergePullRequest({
   github, mergeGithub, owner, repo, pr, headSha, policy, kind, ctx, core,
   justApproved = false, sleep = defaultSleep, settleAttempts = SETTLE_ATTEMPTS, settleMs = SETTLE_MS,
+  // async () => reason | '' ; decide.js passes the Copilot veto (APPROVE-013).
+  // A hit returns { vetoed: true } so the caller withdraws its approval.
+  vetoBlocker = null,
 }) {
   const number = pr && pr.number;
   // POLICY-007: the merge line names what authorised it.
@@ -190,6 +193,17 @@ async function mergePullRequest({
 
     const blocked = mergeableStateBlocker(current.mergeable_state);
     if (blocked) return refuse(`${blocked} (MERGE-003)`);
+
+    // Last, after the settle wait: a review can land while it sleeps.
+    if (vetoBlocker) {
+      let vetoed;
+      try {
+        vetoed = await vetoBlocker();
+      } catch (err) {
+        return done({ merged: false, reason: `the veto could not be evaluated: ${describeError(err)}`, vetoError: err });
+      }
+      if (vetoed) return done({ merged: false, reason: vetoed, vetoed: true });
+    }
 
     // `sha` makes GitHub refuse (409) if the head moved after the re-read.
     let data;

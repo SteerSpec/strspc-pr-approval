@@ -27,23 +27,31 @@ policies:
       author: steerspec-sync[bot]
       source: develop
 
+  # The three kinds below go into develop, where the org's ruleset has Copilot
+  # review every push. Their proofs cannot judge what a change does (a template
+  # sync that drops half a config passes), so each also waits for Copilot's
+  # review of the head, and the Copilot veto refuses unless it is clean.
+
   # Release files copied back from main to develop after a release.
   - id: sync-back
     kind: sync-back
-    rules: [APPROVE-007]
+    rules: [APPROVE-007, APPROVE-013]
+    require: { copilot-review: clean }
     options:
       author: steerspec-sync[bot]
 
   # chore(rules): pin dev.steerspec.core to X, opened by strspc-rules.
   - id: core-pin
     kind: pin
-    rules: [APPROVE-008]
+    rules: [APPROVE-008, APPROVE-013]
+    require: { copilot-review: clean }
     options:
       author: steerspec-sync[bot]
 
   # steerspec-sync/<template>/<version>, opened by strspc-sync.
   - id: template-sync
     kind: template-sync
-    rules: [APPROVE-009]
+    rules: [APPROVE-009, APPROVE-013]
+    require: { copilot-review: clean }
     options:
       author: steerspec-sync[bot]

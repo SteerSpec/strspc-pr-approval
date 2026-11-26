@@ -9,7 +9,7 @@
 version: 1
 realm: ../rules
 extends:
-  - github://SteerSpec/strspc-pr-approval@v1.1.0/presets/steerspec.yml
+  - github://SteerSpec/strspc-pr-approval@v1.2.0/presets/steerspec.yml
 policies:
   - id: release
     kind: release

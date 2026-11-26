@@ -279,12 +279,13 @@ async function decideInner({
   }
 
   // APPROVE-002
-  const checkRuns = await fetchCheckRuns({
+  const readChecks = () => fetchCheckRuns({
     github, context, owner, repo, headSha, companionWorkflow: cfg.companionWorkflow,
     selfWorkflow: cfg.selfWorkflow,
     defaultBranch: (pr.base.repo && pr.base.repo.default_branch) ||
       (context.payload && context.payload.repository && context.payload.repository.default_branch) || '',
   });
+  const checkRuns = await readChecks();
   if (checkRuns.length === 0 && !cfg.allowNoChecks) return finish('skip', 'no checks on head SHA yet');
   const bad = checkRuns.find(isFailedCheck);
   if (bad) return refuse(`failing check: ${bad.name} (${bad.conclusion})`);
@@ -414,6 +415,19 @@ async function decideInner({
       why = await changed(after) || await copilotNow();
     } catch (err) {
       why = `could not re-read the PR after approving (${describeError(err)})`;
+    }
+    // APPROVE-015: runs on one PR can overlap (a sweep keeps a concurrency
+    // group of its own, and cancel-in-progress is not atomic). Another run may
+    // have seen a check fail and withdrawn before this approval landed, so the
+    // checks are read once it is visible: a failure that run saw is visible
+    // now. A check that only started is left to the run its completion starts.
+    if (!why) {
+      try {
+        const failedNow = (await readChecks()).find(isFailedCheck);
+        if (failedNow) why = `check ${failedNow.name} failed (${failedNow.conclusion})`;
+      } catch (err) {
+        why = `could not re-read the checks after approving (${describeError(err)})`;
+      }
     }
     if (why) {
       const failed = await withdraw((r) => r.commit_id === headSha || r.id === created.id, `Withdrawn: ${why} while approving.`);

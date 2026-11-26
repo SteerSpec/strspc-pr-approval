@@ -130,7 +130,18 @@ function harness(o = {}) {
         },
       },
       checks: {
-        listForRef: async () => ({ data: { total_count: checkRuns.length, check_runs: val(checkRuns) } }),
+        listForRef: async () => {
+          // checksAfter: what the checks read once an approval is posted.
+          const runs = calls.createReview.length && 'checksAfter' in o ? val(o.checksAfter) : val(checkRuns);
+          return { data: { total_count: runs.length, check_runs: runs } };
+        },
+      },
+      actions: {
+        getWorkflowRun: async ({ run_id }) => {
+          const r = (o.workflowRuns || {})[run_id];
+          if (!r) throw httpError(404);
+          return { data: { id: run_id, ...r } };
+        },
       },
       git: {
         getRef: async ({ ref }) => {
@@ -877,4 +888,55 @@ test('readConfig: selfWorkflow is the workflow path from GITHUB_WORKFLOW_REF', (
   assert.equal(at('o/r/.github/workflows/a.yml'), '.github/workflows/a.yml');
   assert.equal(at(''), '');
   assert.equal(at('nonsense'), '');
+});
+
+// --- checks re-read after approving (APPROVE-015) -----------------------------
+
+test('APPROVE-015: a check that failed while approving withdraws the approval', async () => {
+  const failed = [{ id: 1, name: 'test', app: { id: 1 }, status: 'completed', conclusion: 'failure', started_at: '2026-01-01T00:00:00Z' }];
+  const h = await run({ checksAfter: failed });
+  assert.equal(h.result.decision, 'skip');
+  assert.match(h.result.reason, /check test failed \(failure\) while approving; approval withdrawn$/);
+  assert.equal(h.calls.createReview.length, 1);
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [1000]);
+  assert.equal(h.mergeCalls.length, 0);
+});
+
+test('APPROVE-015: checks that cannot be re-read withdraw; one that only started does not', async () => {
+  const unread = await run({ checksAfter: httpError(502, 'bad gateway') });
+  assert.match(unread.result.reason, /could not re-read the checks after approving \(502 .*bad gateway\) while approving; approval withdrawn$/);
+  assert.equal(unread.calls.dismissReview.length, 1);
+
+  const started = await run({
+    checksAfter: [{ id: 1, name: 'test', app: { id: 1 }, status: 'in_progress', started_at: '2026-01-01T01:00:00Z' }],
+  });
+  assert.equal(started.result.decision, 'approved');
+  assert.equal(started.calls.dismissReview.length, 0);
+});
+
+test('APPROVE-002/014: a red sweep check on a promotion head does not refuse it; an event run of the job still does', async () => {
+  const self = '.github/workflows/pr-approval.yml';
+  const red = (run) => ({
+    id: run, name: 'strspc-pr-approval', app: { id: 15368, slug: 'github-actions' }, status: 'completed', conclusion: 'failure',
+    started_at: '2026-01-01T01:00:00Z', details_url: `https://github.com/o/r/actions/runs/${run}/job/1`,
+  });
+  const ci = { id: 1, name: 'test', app: { id: 1 }, status: 'completed', conclusion: 'success', started_at: '2026-01-01T00:00:00Z' };
+  const base = {
+    pr: { base: { ref: 'main', repo: { default_branch: 'develop' } } },
+    env: { GITHUB_WORKFLOW_REF: `o/r/${self}@refs/heads/develop` },
+    workflowRuns: {
+      700: { event: 'schedule', path: self, head_branch: 'develop' },
+      701: { event: 'workflow_run', path: self, head_branch: 'develop' },
+    },
+  };
+  const swept = await run({ ...base, checkRuns: [ci, red(700)] });
+  assert.equal(swept.result.decision, 'approved');
+
+  const event = await run({ ...base, checkRuns: [ci, red(701)] });
+  assert.equal(event.result.decision, 'skip');
+  assert.match(event.result.reason, /failing check: strspc-pr-approval \(failure\)/);
+
+  // Without GITHUB_WORKFLOW_REF this job's file is unknown, so the sweep's red check counts.
+  const unknown = await run({ ...base, env: {}, checkRuns: [ci, red(700)] });
+  assert.match(unknown.result.reason, /failing check: strspc-pr-approval/);
 });

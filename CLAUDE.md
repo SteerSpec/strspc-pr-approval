@@ -113,6 +113,8 @@ Everything is API calls; the action never checks out PR code.
   `extends:` (tags/SHAs only), validates it, and picks the first matching policy.
 - `scripts/pr-approval/kinds/*.js` — one module per PR kind. Each holds the hard safety checks of
   its kind; a policy can tighten them but never relax them (APPROVE-010).
+- `scripts/pr-approval/sweep.js` — on `schedule`/`workflow_dispatch`, evaluates each open PR as its
+  own event would (APPROVE-014), the fallback for a re-trigger that never came.
 - `scripts/pr-approval/merge.js` — merge with the App token, pinned to the evaluated head, only
   when a policy enables it (MERGE-001..005).
 - `presets/steerspec.yml` — the SteerSpec org policy; consumers `extends:` it or write their own.

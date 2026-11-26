@@ -22,7 +22,9 @@ nothing from the PR is checked out or executed.
    latest review: when Copilot has reviewed the PR, it refuses unless that review is an "Approval
    recommended" overview with no open issue (APPROVE-013).
 10. **Re-read** head, base, title, draft and merge base; approve pinned to the head SHA; re-read
-    again and withdraw if anything moved (APPROVE-003).
+    again and withdraw if anything moved (APPROVE-003), or if a check on the head has failed since
+    the gate (APPROVE-015): runs on one PR can overlap, and another may have withdrawn on that
+    failure before this approval landed.
 11. **Merge**, only when the policy enables it (MERGE-001..005, [merging.md](merging.md)).
 
 Unexpected API errors become a `skip` with the failing request named, so the job does not turn red
@@ -84,13 +86,16 @@ policy and all. It differs in three ways:
   `dry-run`, then `skip`), `reason` lists every PR that did not skip, and the other outputs describe
   the PR behind `decision`. Each PR still logs its own `pr-approval pr=<n> decision=…` line.
 - It never cancels, and is never cancelled by, a PR's own run: sweeps share their own concurrency
-  group, `pr-approval-<repo>-sweep`. If a sweep and a PR's run judge the same head at once, the
-  worst case is a skipped merge ("already merged") or two approvals of that head.
+  group, `pr-approval-<repo>-sweep`. So a sweep and a PR's run can judge the same head at once:
+  the checks are read again after approving (APPROVE-015), and the worst case is a skipped merge
+  ("already merged") or two approvals of that head.
 
 A sweep runs on the default branch's tip, which is also the head of a promotion from it. Its check
 there judged other PRs, so a run of this job, or of strspc-pr-review's `auto-approve`, from its own
 workflow file for a schedule or a dispatch of the default branch is ignored, finished or not
-(APPROVE-002). Otherwise one red sweep would refuse every promotion until the next tick. A dispatch
+(APPROVE-002). Otherwise one red sweep would refuse every promotion until the next tick. Runs this
+job's own events start (`check_run`, `workflow_run`) land on that tip as well and still count, so a
+red one refuses a promotion until a later run of the same name succeeds. A dispatch
 of another branch runs that branch's copy of the file, so it counts like any check, and the
 template's job `if:` admits a dispatch of the default branch only.
 

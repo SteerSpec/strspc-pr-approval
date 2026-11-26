@@ -17,6 +17,7 @@ summary. Find the reason below.
 | `sweep: …` | The summary of a scheduled or dispatched run | Each PR has its own `pr-approval pr=<n>` line above it |
 | `sweep failed: could not list the open PRs` | The workflow token cannot list PRs | The message names the status |
 | `failing check:` | Refused; any approval of ours withdrawn | Fix the check |
+| `check … failed (…) while approving; approval withdrawn` | A check failed between the gate and the approval, typically while a sweep and a PR's run overlapped (APPROVE-015) | Fix the check |
 | `head … is not the tip of …` | An old event | The next run re-evaluates |
 | `promotion title …` | Promotion titles must be `chore:` and not breaking | Retitle |
 | `commit X came from #N, which has no standing approval` | Provenance: a develop PR merged without an approval | Approve PRs into develop before merging them, or promote by hand |

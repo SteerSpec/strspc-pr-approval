@@ -6,9 +6,9 @@
     "description": "When the action may approve a pull request, and when it must refuse or take an approval back."
   },
   "rule_set": {
-    "version": "0.1.21",
-    "timestamp": "2026-11-26T17:36:51Z",
-    "hash": "blake3:23248a531f4ed7dc83de70f9493f7d612dda742091ff0a82a6a3353891ca0ff6"
+    "version": "0.1.22",
+    "timestamp": "2026-11-26T17:41:43Z",
+    "hash": "blake3:b56b250c449f39c91f3f5961515ce795ee1a189593ae95cdff2413f01af04fd3"
   },
   "rules": [
     {
@@ -133,6 +133,15 @@
       "revision": 0,
       "state": "D",
       "body": "On a schedule or a dispatch of the default branch, the action MUST evaluate the open pull requests the caller admits, most recently opened first and up to a stated limit, each under the same rules as a run started by an event of that pull request.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-26",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-015",
+      "revision": 0,
+      "state": "D",
+      "body": "The action MUST read the checks on the head of a pull request again after approving it, and withdraw its approval of that head when one has failed or the checks cannot be read, since another run may have withdrawn on that failure before the approval landed.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-26",
       "supersedes": null

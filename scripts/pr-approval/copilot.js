@@ -68,12 +68,14 @@ function overviewBlocker(body) {
   return '';
 }
 
-// Copilot's most recent review on any commit, or null. Its overview covers
-// every round, so the latest one is the standing verdict.
+// Copilot's most recent standing review on any commit, or null. Its overview
+// covers every round, so the latest one is the verdict. A pending review is not
+// submitted and a dismissed one no longer stands, so neither counts.
+const IGNORED_STATES = new Set(['PENDING', 'DISMISSED']);
 function latestCopilotReview(reviews = []) {
   let latest = null;
   for (const r of reviews) {
-    if (!isCopilot(r) || r.state === 'PENDING') continue;
+    if (!isCopilot(r) || IGNORED_STATES.has(r.state)) continue;
     const at = Date.parse(r.submitted_at || '') || 0;
     const best = latest ? (Date.parse(latest.submitted_at || '') || 0) : -1;
     if (!latest || at > best || (at === best && r.id > latest.id)) latest = r;
@@ -98,7 +100,8 @@ function copilotRequireBlocker({ reviews, headSha }) {
 async function copilotVeto(ctx) {
   const latest = latestCopilotReview(await ctx.listReviews());
   if (!latest) return null;
-  const why = overviewBlocker(latest.body);
+  // A change request is never clean, whatever its body says.
+  const why = latest.state === 'CHANGES_REQUESTED' ? 'requests changes' : overviewBlocker(latest.body);
   return why ? { reason: `Copilot's latest review (${latest.id}) ${why}` } : null;
 }
 

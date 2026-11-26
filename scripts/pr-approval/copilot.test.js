@@ -33,6 +33,7 @@ test('APPROVE-013: the latest Copilot review wins, other logins and pending revi
     review(2, HEAD, CLEAN, '2026-11-25T11:00:00Z'),
     review(3, HEAD, 'x', '2026-11-25T12:00:00Z', 'copilot-lookalike[bot]'),
     { ...review(4, HEAD, 'x', null), state: 'PENDING' },
+    { ...review(5, HEAD, 'x', '2026-11-25T13:00:00Z'), state: 'DISMISSED' },
   ];
   assert.equal(latestCopilotReview(reviews).id, 2);
   assert.equal(latestCopilotReview([]), null);

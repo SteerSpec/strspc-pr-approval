@@ -88,6 +88,10 @@ function harness(o = {}) {
         listReviews: async () => {
           calls.listReviews++;
           if (o.listReviewsError) throw o.listReviewsError;
+          // lateReviews: [{ from, review }] appears from the `from`th listing on.
+          for (const late of o.lateReviews || []) {
+            if (calls.listReviews >= late.from && !reviews.some((r) => r.id === late.review.id)) reviews.push({ ...late.review });
+          }
           return { data: reviews.map((r) => ({ ...r })) };
         },
         createReview: async (p) => {
@@ -539,6 +543,36 @@ test('APPROVE-013: require.copilot-review waits for a review of the head itself'
   const clean = await run({ policy, reviews: [copilotReview(80, HEAD, CLEAN_OVERVIEW)] });
   assert.equal(clean.result.decision, 'approved');
   assert.equal(none.calls.createReview.length + older.calls.createReview.length + flagged.calls.createReview.length, 0);
+});
+
+test('APPROVE-013: a change request vetoes even with a clean-looking body', async () => {
+  const h = await run({ reviews: [{ ...copilotReview(81, HEAD, CLEAN_OVERVIEW), state: 'CHANGES_REQUESTED' }] });
+  assert.match(h.result.reason, /vetoed: Copilot's latest review \(81\) requests changes/);
+  assert.equal(h.calls.createReview.length, 0);
+});
+
+test('APPROVE-013: a dismissed Copilot review no longer stands', async () => {
+  const dismissed = { ...copilotReview(83, HEAD, FLAGGED_OVERVIEW, '2026-11-25T14:00:00Z'), state: 'DISMISSED' };
+  const h = await run({ reviews: [copilotReview(82, HEAD, CLEAN_OVERVIEW, '2026-11-25T13:00:00Z'), dismissed] });
+  assert.equal(h.result.decision, 'approved');
+  const required = await run({ policy: { require: { 'copilot-review': 'clean' } }, reviews: [{ ...dismissed, body: CLEAN_OVERVIEW }] });
+  assert.match(required.result.reason, /Copilot has not reviewed the PR yet/);
+});
+
+test('APPROVE-013: a flagged Copilot review that lands mid-run refuses before approving', async () => {
+  // Listing 1 is the veto stage; the review lands before the re-read.
+  const h = await run({ reviews: [ourApproval(84, HEAD)], lateReviews: [{ from: 2, review: copilotReview(85, HEAD, FLAGGED_OVERVIEW) }] });
+  assert.match(h.result.reason, /vetoed: Copilot's latest review \(85\)/);
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [84]);
+  assert.equal(h.calls.createReview.length, 0);
+});
+
+test('APPROVE-013: one that lands while approving withdraws the new approval', async () => {
+  // Listings: veto stage, the re-read before approving, the re-read after.
+  const h = await run({ lateReviews: [{ from: 3, review: copilotReview(86, HEAD, FLAGGED_OVERVIEW) }] });
+  assert.equal(h.calls.createReview.length, 1);
+  assert.match(h.result.reason, /vetoed: Copilot's latest review \(86\).* while approving; approval withdrawn/);
+  assert.equal(h.calls.dismissReview.length, 1);
 });
 
 // --- dry run ----------------------------------------------------------------------

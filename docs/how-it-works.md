@@ -54,8 +54,9 @@ sync that replaces a repository's own `dependabot.yml` with a narrower one (this
 the template-sync proof, while Copilot flags it. So Copilot's latest review can refuse an approval,
 and take back one already given, but never grant one (APPROVE-013). The overview is read strictly: only
 the verdict "Approval recommended" with "No open issues" passes, and an unknown section, a
-previously missed issue, or an errored review refuses. The parser is the one strspc-pr-review uses
-by default.
+previously missed issue, an errored review or a change request refuses. A dismissed review no longer
+stands and is skipped. The parser is the one strspc-pr-review uses by default. Reviews are listed
+again right before and right after the approval, so a review that lands mid-run still refuses.
 
 A PR Copilot never reviewed passes the veto. A policy that needs a review sets
 `require: { copilot-review: clean }`, which also refuses until Copilot has reviewed the head itself.

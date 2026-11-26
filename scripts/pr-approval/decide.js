@@ -16,7 +16,7 @@
 
 const defaultKinds = require('./kinds/index.js');
 const { loadPolicy, matchPolicy, requireBlocker, PolicyError } = require('./policy.js');
-const { copilotVeto } = require('./copilot.js');
+const { copilotVeto, copilotRequireBlocker } = require('./copilot.js');
 const { mergePullRequest } = require('./merge.js');
 const {
   makeApiClient, stripApiHost, describeError, isFailedCheck, fetchCheckRuns, compareHead, dismissReview,
@@ -332,10 +332,26 @@ async function decideInner({
     }
     return '';
   };
+  // APPROVE-013: a Copilot review can land while this run evaluates, so the
+  // veto and require.copilot-review are judged again on a fresh review list,
+  // right before and right after the approval.
+  const copilotNow = async () => {
+    const fresh = await loadReviews();
+    if (policy.require && 'copilot-review' in policy.require) {
+      const missing = copilotRequireBlocker({ reviews: fresh, headSha });
+      if (missing) return missing;
+    }
+    const veto = await copilotVeto({ ...ctx, listReviews: async () => fresh });
+    return veto ? `vetoed: ${veto.reason}` : '';
+  };
   {
     const { data: current } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
     const why = await changed(current);
     if (why) return finish('skip', `${why} during evaluation; the next run re-evaluates it`);
+    // A refusal, not a skip: the run Copilot's review starts may never come,
+    // so an approval of ours on this head is withdrawn now.
+    const copilot = await copilotNow();
+    if (copilot) return refuse(copilot);
   }
 
   reviews = reviews || await loadReviews();
@@ -356,7 +372,7 @@ async function decideInner({
     let why;
     try {
       const { data: after } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
-      why = await changed(after);
+      why = await changed(after) || await copilotNow();
     } catch (err) {
       why = `could not re-read the PR after approving (${describeError(err)})`;
     }

@@ -198,8 +198,8 @@ function companionGithub(pages, events) {
       github.runLookups.push(run_id);
       if (!(run_id in events)) throw Object.assign(new Error('Not Found'), { status: 404 });
       const r = events[run_id];
-      const { event, path = '.github/workflows/auto-approve.yml' } = typeof r === 'string' ? { event: r } : r;
-      return { data: { id: run_id, event, path } };
+      const { event, path = '.github/workflows/auto-approve.yml', head_branch = 'develop' } = typeof r === 'string' ? { event: r } : r;
+      return { data: { id: run_id, event, path, head_branch } };
     },
   };
   return github;
@@ -288,6 +288,44 @@ test('APPROVE-002: a failing CI job sharing this job\'s name still blocks; cance
   const runs = await util.fetchCheckRuns({ github, context: ctx, owner: 'o', repo: 'r', headSha: 'abc' });
   assert.deepEqual(runs.map((r) => r.id).sort(), [1, 2, 3, 4, 5]);
   assert.deepEqual(runs.filter(util.isFailedCheck).map((r) => r.id).sort(), [3, 5]);
+});
+
+test('APPROVE-002/014: a sweep run of this job or the companion is ignored, finished or not', async () => {
+  const self = '.github/workflows/pr-approval.yml';
+  const check = (id, name, run, status = 'completed', conclusion = 'failure') => ({
+    id, name, status, conclusion: status === 'completed' ? conclusion : null, app: { ...actionsApp, id }, details_url: jobUrl(run),
+  });
+  const events = {
+    900: { event: 'schedule', path: self },
+    901: { event: 'workflow_dispatch', path: self, head_branch: 'develop' },
+    902: { event: 'workflow_dispatch', path: self, head_branch: 'feature/x' }, // a branch's copy
+    903: { event: 'schedule', path: '.github/workflows/nightly.yml' }, // other workflow, same job name
+    904: { event: 'pull_request_target', path: self }, // a finished event run still counts
+    910: { event: 'schedule' }, // companion sweep, default auto-approve.yml
+    911: { event: 'schedule', path: '.github/workflows/other.yml' },
+  };
+  const pages = [[
+    check(1, 'strspc-pr-approval', 900),
+    check(2, 'strspc-pr-approval', 901),
+    check(3, 'strspc-pr-approval', 902),
+    check(4, 'strspc-pr-approval', 903),
+    check(5, 'strspc-pr-approval', 904),
+    check(6, 'auto-approve', 910, 'in_progress'),
+    check(7, 'auto-approve', 910),
+    check(8, 'auto-approve', 911),
+    check(9, 'strspc-pr-approval', 900, 'in_progress'),
+  ]];
+  const ids = async (opts) => (await util.fetchCheckRuns({
+    github: companionGithub(pages, events), context: ctx, owner: 'o', repo: 'r', headSha: 'abc', ...opts,
+  })).map((r) => r.id).sort((a, b) => a - b);
+  assert.deepEqual(await ids({ selfWorkflow: self, defaultBranch: 'develop' }), [3, 4, 5, 8]);
+  // Without the default branch, no dispatch is proven to be of it.
+  assert.deepEqual(await ids({ selfWorkflow: self }), [2, 3, 4, 5, 8]);
+  // Without its own workflow file, this job's finished runs all count; the
+  // unfinished one is still its own.
+  assert.deepEqual(await ids({ defaultBranch: 'develop' }), [1, 2, 3, 4, 5, 8]);
+  // companion-workflow: off drops the companion's exemption too.
+  assert.deepEqual(await ids({ selfWorkflow: self, defaultBranch: 'develop', companionWorkflow: '' }), [3, 4, 5, 6, 7, 8]);
 });
 
 test('fetchCheckRuns stops on an empty page even if total_count says more', async () => {

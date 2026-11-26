@@ -40,6 +40,21 @@ on:
   workflow_run:
     workflows: ['CI']
     types: [completed]
+  # THE SWEEP: the fallback for an event that never arrives. The run that
+  # Copilot's review starts is held at 'action_required', and CI's workflow_run
+  # can go missing, so a PR may wait until someone pushes. On each tick, and on
+  # a manual run from the Actions tab, the action evaluates every open PR the
+  # job if: below would admit, one after another, under the same policy.
+  #
+  # Cost: one short run per tick (some 720 minutes a month at this hourly cron on
+  # a private repo), plus a dozen API calls per open PR. GitHub runs schedules
+  # from the default branch's copy of this file only, can start them late, and
+  # disables them in a public repo with no activity for 60 days. Delete
+  # `schedule:` to keep only the manual run. The minute differs from
+  # strspc-pr-review's sweep ('23 * * * *') so the two rarely overlap.
+  schedule:
+    - cron: '53 * * * *'
+  workflow_dispatch:
 
 jobs:
   # A unique job id: check runs are named after it, and both the if: below and
@@ -53,20 +68,30 @@ jobs:
       # Reads the workflow run behind an unfinished `auto-approve` check, to tell
       # strspc-pr-review's job from CI of the same name.
       actions: read
+    # Serialize runs per PR. Sweeps share one group of their own and are never
+    # cancelled: a sweep stopped halfway leaves the rest of its PRs for the next
+    # tick, and a sweep never cancels a PR's own run.
     concurrency:
       group: >-
         pr-approval-${{ github.repository }}-${{
           github.event.pull_request.number ||
           github.event.check_run.pull_requests[0].number ||
           github.event.workflow_run.pull_requests[0].number ||
+          ((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'sweep') ||
           github.run_id
         }}
-      cancel-in-progress: true
+      cancel-in-progress: ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
     # The fork guard is REQUIRED: under pull_request_target a fork PR would
     # otherwise run with your secrets. The actor guard stops the bot's own
     # review from re-triggering this job; keep it identical to bot-login below.
     # Every workflow_run conclusion but skipped re-enters: a check that fails on
     # an approved head must reach the action so it can withdraw the approval.
+    # A sweep (schedule, workflow_dispatch) applies the draft and fork gates to
+    # each PR itself. A dispatch runs the copy of this file on the ref it names,
+    # so only a dispatch of the default branch is admitted: a sweep always runs
+    # the reviewed definition. That stops a mistaken or stale dispatch; it is no
+    # secret boundary on its own, since whoever can push a branch can run a
+    # workflow of their own with this repo's secrets (`on: push`).
     if: >-
       (
         (
@@ -87,6 +112,11 @@ jobs:
         github.event.workflow_run.conclusion != 'skipped' &&
         github.event.workflow_run.head_repository.full_name == github.repository &&
         github.event.workflow_run.pull_requests[0] != null
+      ) ||
+      github.event_name == 'schedule' ||
+      (
+        github.event_name == 'workflow_dispatch' &&
+        github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       )
     steps:
       # The merge token. A GitHub App, not GITHUB_TOKEN: a merge made with

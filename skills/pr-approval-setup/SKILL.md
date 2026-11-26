@@ -22,7 +22,8 @@ the approving account must differ from every author.
 ## 2. Caller
 
 Copy `templates/pr-approval.yml` to `.github/workflows/pr-approval.yml`; replace `['CI']` with the
-gating workflow names. Variables: `STRSPC_PR_APPROVAL_BOT_LOGIN`, `STRSPC_PR_APPROVAL_DRY_RUN=true`,
+gating workflow names. Keep `schedule:` (the hourly sweep) unless the repo cannot afford the
+minutes. Variables: `STRSPC_PR_APPROVAL_BOT_LOGIN`, `STRSPC_PR_APPROVAL_DRY_RUN=true`,
 and `STRSPC_PR_APPROVAL_MERGE=true` only if a policy merges. Secret: `PR_APPROVAL_BOT_TOKEN`.
 
 ## 3. Policy

@@ -24,5 +24,7 @@ count. Keep push access tight, and review access grants as you would a merge.
 The caller listens to `pull_request_review`, which runs the workflow definition from the PR, so
 anyone who can push a branch to the repository can reach `PR_APPROVAL_BOT_TOKEN` and the App key from a
 same-repository PR. That is no new exposure: the same people can already read repository secrets
-from any `push`-triggered workflow on their branch. If that is too wide for you, keep both secrets in
+from any `push`-triggered workflow on their branch. The sweep's `workflow_dispatch` is the same: a
+dispatch runs the copy of the workflow on the ref it names, and the job `if:` that admits only the
+default branch is that copy's too, so it stops a mistaken dispatch, not a deliberate one. If that is too wide for you, keep both secrets in
 a deployment environment restricted to the default branch and add `environment:` to the job.

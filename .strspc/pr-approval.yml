@@ -1,9 +1,15 @@
-# This repository's own policy: the SteerSpec preset, read from this same
-# branch, with merging switched on for release PRs (dogfooding MERGE-001..005).
+# This repository's own policy: the SteerSpec preset, with merging switched on
+# for release PRs (dogfooding MERGE-001..005).
+#
+# The preset is extended at the release tag the caller runs, like any consumer,
+# not from this branch: a preset change that adds a key would otherwise reach
+# main before a release that understands it, and the pinned action would
+# reject the whole policy (#21). Bump this tag together with the SHA in
+# .github/workflows/pr-approval.yml.
 version: 1
 realm: ../rules
 extends:
-  - ../presets/steerspec.yml
+  - github://SteerSpec/strspc-pr-approval@v1.1.0/presets/steerspec.yml
 policies:
   - id: release
     kind: release

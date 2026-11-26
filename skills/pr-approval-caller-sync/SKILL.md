@@ -29,6 +29,8 @@ gh search code "uses: SteerSpec/strspc-pr-approval" --json repository,path
 ## 3. Per repository
 
 - `workflow_run.workflows` lists that repo's gating workflows — never copy it blindly.
+- The `schedule:` cron stays off strspc-pr-review's minute, so the two sweeps rarely overlap. A
+  repo that dropped `schedule:` on purpose keeps it dropped.
 - `.strspc/pr-approval.yml` exists on every base branch.
 - strspc-pr-review in the same repo no longer has `promotion-branches`/`release-branches` set and
   excludes what this action handles.

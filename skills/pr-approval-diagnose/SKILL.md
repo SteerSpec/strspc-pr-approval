@@ -17,6 +17,10 @@ Then match the `reason` in `docs/troubleshooting.md`. Common causes:
 
 - **No run at all**: the gating workflow is not under `workflow_run.workflows`, or the job `if:`
   filtered the event (fork, draft, the bot's own review).
+- **Waiting after Copilot reviewed**: the run Copilot's review starts is held at `action_required`.
+  The hourly sweep re-evaluates the PR (`gh run list --workflow=pr-approval.yml --event schedule`);
+  start one now with `gh workflow run pr-approval.yml`. No sweep runs: the caller predates the
+  `schedule:` trigger, or GitHub disabled it after 60 days without activity.
 - **`no policy matches`**: compare the PR's head/base/author/labels with the policy's `match` and the
   kind defaults. `gh pr view <n> --json headRefName,baseRefName,author,labels`.
 - **Policy read from the wrong place**: it is read from the *base* branch. A fix on `develop` does

@@ -13,11 +13,13 @@
 //   PR_APPROVAL_DRY_RUN          'true' = decide and report, write nothing
 //   PR_APPROVAL_ALLOW_NO_CHECKS  'true' = a head with no checks may be approved
 //   PR_APPROVAL_COMPANION_WORKFLOW  strspc-pr-review's caller file (empty = the default, 'off' = none)
+//   GITHUB_WORKFLOW_REF          set by Actions; names this job's own workflow file
 
 const defaultKinds = require('./kinds/index.js');
 const { loadPolicy, matchPolicy, requireBlocker, PolicyError } = require('./policy.js');
 const { copilotVeto, copilotRequireBlocker } = require('./copilot.js');
 const { mergePullRequest } = require('./merge.js');
+const { sweep, isSweep } = require('./sweep.js');
 const {
   makeApiClient, stripApiHost, describeError, isFailedCheck, fetchCheckRuns, compareHead, dismissReview,
   DEFAULT_COMPANION_WORKFLOW,
@@ -60,7 +62,15 @@ function readConfig(env = process.env) {
     // Empty means the default, not off: an unset Actions variable wired to the
     // input arrives as '' and must not silently drop the exemption.
     companionWorkflow: companionWorkflow(env.PR_APPROVAL_COMPANION_WORKFLOW),
+    selfWorkflow: selfWorkflow(env.GITHUB_WORKFLOW_REF),
   };
+}
+
+// GITHUB_WORKFLOW_REF is "owner/repo/.github/workflows/file.yml@refs/heads/x";
+// the path in the repository is what a workflow run's `path` holds.
+function selfWorkflow(ref) {
+  const m = /^[^/]+\/[^/]+\/(.+?)(?:@.*)?$/.exec(String(ref || '').trim());
+  return m ? m[1] : '';
 }
 
 // Vetoes run after every approving check and can only refuse (APPROVE-011).
@@ -69,7 +79,13 @@ function readConfig(env = process.env) {
 //   async (ctx) => null | { reason, downgrade?: boolean }
 const DEFAULT_VETOES = [copilotVeto];
 
+// A schedule or a manual dispatch carries no PR: it sweeps the open ones
+// (APPROVE-014), each evaluated as its own event would have it.
 async function decide(args) {
+  return isSweep(args.context) ? sweep({ evaluate, args }) : evaluate(args);
+}
+
+async function evaluate(args) {
   const { core } = args;
   try {
     return await decideInner(args);
@@ -263,9 +279,13 @@ async function decideInner({
   }
 
   // APPROVE-002
-  const checkRuns = await fetchCheckRuns({
+  const readChecks = () => fetchCheckRuns({
     github, context, owner, repo, headSha, companionWorkflow: cfg.companionWorkflow,
+    selfWorkflow: cfg.selfWorkflow,
+    defaultBranch: (pr.base.repo && pr.base.repo.default_branch) ||
+      (context.payload && context.payload.repository && context.payload.repository.default_branch) || '',
   });
+  const checkRuns = await readChecks();
   if (checkRuns.length === 0 && !cfg.allowNoChecks) return finish('skip', 'no checks on head SHA yet');
   const bad = checkRuns.find(isFailedCheck);
   if (bad) return refuse(`failing check: ${bad.name} (${bad.conclusion})`);
@@ -395,6 +415,19 @@ async function decideInner({
       why = await changed(after) || await copilotNow();
     } catch (err) {
       why = `could not re-read the PR after approving (${describeError(err)})`;
+    }
+    // APPROVE-015: runs on one PR can overlap (a sweep keeps a concurrency
+    // group of its own, and cancel-in-progress is not atomic). Another run may
+    // have seen a check fail and withdrawn before this approval landed, so the
+    // checks are read once it is visible: a failure that run saw is visible
+    // now. A check that only started is left to the run its completion starts.
+    if (!why) {
+      try {
+        const failedNow = (await readChecks()).find(isFailedCheck);
+        if (failedNow) why = `check ${failedNow.name} failed (${failedNow.conclusion})`;
+      } catch (err) {
+        why = `could not re-read the checks after approving (${describeError(err)})`;
+      }
     }
     if (why) {
       const failed = await withdraw((r) => r.commit_id === headSha || r.id === created.id, `Withdrawn: ${why} while approving.`);

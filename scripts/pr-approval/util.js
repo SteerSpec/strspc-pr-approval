@@ -63,21 +63,43 @@ const RUN_ID_RE = /\/actions\/runs\/(\d+)(?:\/|$)/;
 // A run's path can carry the ref it ran from ("file.yml@refs/heads/x").
 const workflowFile = (p) => String(p || '').split('@')[0];
 
-async function isCompanionRun({ github, owner, repo, cr, cache, companionWorkflow }) {
-  if (!companionWorkflow) return false;
-  if (!cr.app || cr.app.slug !== ACTIONS_APP_SLUG) return false;
+// The GitHub Actions run behind a check, or null when it is not one or cannot
+// be read. Cached per run: a run's jobs share it.
+function workflowRunOf({ github, owner, repo, cr, cache }) {
+  if (!cr.app || cr.app.slug !== ACTIONS_APP_SLUG) return null;
   const m = RUN_ID_RE.exec(cr.details_url || '');
-  if (!m) return false;
+  if (!m) return null;
   if (!cache.has(m[1])) {
     cache.set(m[1], github.rest.actions.getWorkflowRun({ owner, repo, run_id: Number(m[1]) })
-      .then(({ data }) => COMPANION_EVENTS.has(data.event) && workflowFile(data.path) === companionWorkflow,
-        () => false));
+      .then(({ data }) => data, () => null));
   }
   return cache.get(m[1]);
 }
 
+async function isCompanionRun({ github, owner, repo, cr, cache, companionWorkflow }) {
+  if (!companionWorkflow) return false;
+  const run = await workflowRunOf({ github, owner, repo, cr, cache });
+  return Boolean(run) && COMPANION_EVENTS.has(run.event) && workflowFile(run.path) === companionWorkflow;
+}
+
+// A sweep (APPROVE-014) runs on the default branch's tip, which is the head of
+// every promotion from it. Its check there judged other PRs, not that code,
+// and one red sweep would refuse every such promotion until the next one. So a
+// run of this job or of the companion's, from its own workflow file, started
+// by a schedule or by a dispatch of the default branch, is ignored whether or
+// not it has finished (APPROVE-002). A dispatch of another branch runs that
+// branch's copy of the file, so it still counts.
+const SWEEP_EVENTS = new Set(['schedule', 'workflow_dispatch']);
+async function isSweepRun({ github, owner, repo, cr, cache, workflow, defaultBranch }) {
+  if (!workflow) return false;
+  const run = await workflowRunOf({ github, owner, repo, cr, cache });
+  if (!run || workflowFile(run.path) !== workflow || !SWEEP_EVENTS.has(run.event)) return false;
+  return run.event === 'schedule' || (Boolean(defaultBranch) && run.head_branch === defaultBranch);
+}
+
 async function fetchCheckRuns({
   github, context, owner, repo, headSha, selfJobNames = [], companionWorkflow = DEFAULT_COMPANION_WORKFLOW,
+  selfWorkflow = '', defaultBranch = '',
 }) {
   const all = [];
   let page = 1;
@@ -100,6 +122,8 @@ async function fetchCheckRuns({
   for (const cr of all) {
     if (cr == null) continue;
     if (cr.details_url && selfRunRe.test(cr.details_url)) continue;
+    const sweepOf = selfJobs.has(cr.name) ? selfWorkflow : (companionJobs.has(cr.name) ? companionWorkflow : '');
+    if (sweepOf && await isSweepRun({ github, owner, repo, cr, cache, workflow: sweepOf, defaultBranch })) continue;
     if (cr.status !== 'completed') {
       if (selfJobs.has(cr.name)) continue;
       if (companionJobs.has(cr.name) && await isCompanionRun({ github, owner, repo, cr, cache, companionWorkflow })) continue;

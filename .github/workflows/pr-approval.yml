@@ -3,9 +3,11 @@ name: PR Approval
 # This IS the live workflow for this repo -- not a template to copy anywhere.
 #
 # Generated from templates/pr-approval.yml (v1.0.1) with only the action
-# reference changed: it is pinned to the v1.0.1 commit SHA, not @v1, because
-# this step runs with PR_APPROVAL_BOT_TOKEN and a moved tag must not change its
-# code. Bump the SHA and the version comment together when upgrading.
+# reference changed: it is pinned to a commit SHA, not @v1, because this step
+# runs with PR_APPROVAL_BOT_TOKEN and a moved tag must not change its code.
+# Bump the SHA and the version comment together when upgrading, and in the same
+# PR the preset tag in .strspc/pr-approval.yml: the policy on main must never
+# use a key this pinned version does not know, or the job fails (#21).
 #
 # Dogfooding starts in dry-run: the repo variable STRSPC_PR_APPROVAL_DRY_RUN is
 # 'true', so the action reports its decision without approving.
@@ -108,7 +110,7 @@ jobs:
           permission-pull-requests: write
 
       # Pinned to a commit SHA, not @v1: see the top of this file.
-      - uses: SteerSpec/strspc-pr-approval@02882f8172dfcc370cac5d5bc13548de5753567d # v1.0.1
+      - uses: SteerSpec/strspc-pr-approval@1ad24e6cbabca756c3c1c01a12564b33dd03a200 # v1.1.0
         with:
           bot-login: ${{ vars.STRSPC_PR_APPROVAL_BOT_LOGIN }}
           approve-token: ${{ secrets.PR_APPROVAL_BOT_TOKEN }}

@@ -17,6 +17,7 @@
 const path = require('path');
 const yaml = require('../../vendor/js-yaml/js-yaml.js');
 const { toList, matchesAnyGlob } = require('./util.js');
+const { copilotRequireBlocker } = require('./copilot.js');
 
 const POLICY_VERSION = 1;
 const MAX_EXTENDS_DEPTH = 3;
@@ -113,7 +114,8 @@ function unknownKeys(obj, allowed, where, errors) {
 }
 
 const MATCH_KEYS = ['base', 'head', 'authors', 'title', 'labels'];
-const REQUIRE_KEYS = ['checks', 'paths', 'forbid-paths', 'max-files', 'max-additions', 'max-deletions', 'no-labels'];
+const REQUIRE_KEYS = ['checks', 'paths', 'forbid-paths', 'max-files', 'max-additions', 'max-deletions', 'no-labels', 'copilot-review'];
+const COPILOT_REVIEW_VALUES = ['clean'];
 const POLICY_KEYS = ['id', 'kind', 'rules', 'description', 'match', 'require', 'options', 'approve', 'merge'];
 const FILE_KEYS = ['version', 'realm', 'extends', 'policies'];
 
@@ -139,6 +141,9 @@ function validateRequire(req, where, errors) {
     if (k in req && (!isStringList(req[k]) || req[k].length === 0)) errors.push(`${where}.${k}: must be a non-empty list of strings`);
   }
   for (const k of ['max-files', 'max-additions', 'max-deletions']) if (k in req && !isPositiveInt(req[k])) errors.push(`${where}.${k}: must be a non-negative integer`);
+  if ('copilot-review' in req && !COPILOT_REVIEW_VALUES.includes(req['copilot-review'])) {
+    errors.push(`${where}.copilot-review: must be one of ${COPILOT_REVIEW_VALUES.join(', ')}`);
+  }
 }
 
 function validateMergeBlock(merge, where, errors) {
@@ -354,8 +359,16 @@ function matchPolicy(policies, pr, kinds) {
 // tightening only; nothing here can relax a kind's own checks).
 //
 // `files` is the compare listing of the evaluated head (null when it cannot be
-// listed), `checkRuns` the deduped runs of the head.
-function requireBlocker({ pr, require: req = {}, files, checkRuns = [] }) {
+// listed), `checkRuns` the deduped runs of the head, `reviews` the PR's reviews
+// (needed only for copilot-review). copilot-review: clean only asks that
+// Copilot reviewed the head; whether that review is clean is the Copilot veto's
+// call, which every policy gets (APPROVE-013).
+function requireBlocker({ pr, require: req = {}, files, checkRuns = [], reviews = null }) {
+  if ('copilot-review' in req) {
+    if (!reviews) return 'reviews cannot be listed';
+    const missing = copilotRequireBlocker({ reviews, headSha: pr.head && pr.head.sha });
+    if (missing) return missing;
+  }
   const labels = new Set((pr.labels || []).map((l) => (typeof l === 'string' ? l : l.name)));
   const blocked = toList(req['no-labels']).find((l) => labels.has(l));
   if (blocked) return `carries label '${blocked}'`;
@@ -392,6 +405,7 @@ module.exports = {
   MERGE_METHODS,
   MATCH_KEYS,
   REQUIRE_KEYS,
+  COPILOT_REVIEW_VALUES,
   POLICY_KEYS,
   FILE_KEYS,
   PolicyError,

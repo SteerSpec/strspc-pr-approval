@@ -88,6 +88,11 @@ function harness(o = {}) {
         listReviews: async () => {
           calls.listReviews++;
           if (o.listReviewsError) throw o.listReviewsError;
+          if ((o.listReviewsFailAt || []).includes(calls.listReviews)) throw httpError(502, 'bad gateway');
+          // lateReviews: [{ from, review }] appears from the `from`th listing on.
+          for (const late of o.lateReviews || []) {
+            if (calls.listReviews >= late.from && !reviews.some((r) => r.id === late.review.id)) reviews.push({ ...late.review });
+          }
           return { data: reviews.map((r) => ({ ...r })) };
         },
         createReview: async (p) => {
@@ -499,6 +504,114 @@ test('APPROVE-011: a downgrading veto says the PR needs a human; a null veto is 
   assert.equal(passes.result.decision, 'approved');
 });
 
+const COPILOT = 'copilot-pull-request-reviewer[bot]';
+const CLEAN_OVERVIEW = '<!-- ccr-overview-v2 -->\n\n### 🟢 Approval recommended\n\nLooks right.\n\n**No open issues** 🎉\n';
+const FLAGGED_OVERVIEW = '<!-- ccr-overview-v2 -->\n\n### 🟡 Changes recommended\n\nDrops the npm ecosystem.\n\n<details open>\n<summary><strong>1 open issue</strong></summary>\n\n- Keep majors out\n</details>\n';
+const copilotReview = (id, commit, body, at = `2026-11-25T13:${String(id % 60).padStart(2, '0')}:00Z`) =>
+  ({ id, user: { login: COPILOT }, state: 'COMMENTED', commit_id: commit, body, submitted_at: at });
+
+test('APPROVE-013: Copilot flagging the PR vetoes and withdraws our approval', async () => {
+  const h = await run({ reviews: [ourApproval(71, HEAD), copilotReview(72, HEAD, FLAGGED_OVERVIEW)] });
+  assert.equal(h.result.decision, 'skip');
+  assert.equal(h.result.reason, "[release: APPROVE-006, MERGE-001] vetoed: Copilot's latest review (72) has verdict '🟡 Changes recommended'");
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [71]);
+  assert.equal(h.calls.createReview.length, 0);
+});
+
+test('APPROVE-013: only Copilot\'s latest review counts, on whichever commit', async () => {
+  const fixed = await run({ reviews: [copilotReview(73, OLD, FLAGGED_OVERVIEW, '2026-11-25T13:00:00Z'), copilotReview(74, HEAD, CLEAN_OVERVIEW, '2026-11-25T14:00:00Z')] });
+  assert.equal(fixed.result.decision, 'approved');
+  const stale = await run({ reviews: [copilotReview(75, OLD, FLAGGED_OVERVIEW)] });
+  assert.match(stale.result.reason, /vetoed: Copilot's latest review \(75\) has verdict/);
+});
+
+test('APPROVE-013: a review from a lookalike login or a green verdict over open issues', async () => {
+  const lookalike = await run({ reviews: [{ ...copilotReview(76, HEAD, FLAGGED_OVERVIEW), user: { login: 'copilot-fan[bot]' } }] });
+  assert.equal(lookalike.result.decision, 'approved');
+  const greenOverIssue = CLEAN_OVERVIEW.replace('**No open issues** 🎉\n', '<details>\n<summary><strong>2 open issues</strong></summary>\n</details>\n');
+  const h = await run({ reviews: [copilotReview(77, HEAD, greenOverIssue)] });
+  assert.match(h.result.reason, /vetoed: Copilot's latest review \(77\) lists 2 open issue\(s\)/);
+});
+
+test('APPROVE-013: require.copilot-review waits for a review of the head itself', async () => {
+  const policy = { require: { 'copilot-review': 'clean' } };
+  const none = await run({ policy });
+  assert.equal(none.result.reason, '[release: APPROVE-006, MERGE-001] Copilot has not reviewed the PR yet');
+  const older = await run({ policy, reviews: [copilotReview(78, OLD, CLEAN_OVERVIEW)] });
+  assert.match(older.result.reason, /Copilot's latest review is of b2b2b2b2, not the head a1a1a1a1/);
+  const flagged = await run({ policy, reviews: [copilotReview(79, HEAD, FLAGGED_OVERVIEW)] });
+  assert.match(flagged.result.reason, /vetoed: Copilot's latest review \(79\)/);
+  const clean = await run({ policy, reviews: [copilotReview(80, HEAD, CLEAN_OVERVIEW)] });
+  assert.equal(clean.result.decision, 'approved');
+  assert.equal(none.calls.createReview.length + older.calls.createReview.length + flagged.calls.createReview.length, 0);
+});
+
+test('APPROVE-013: a change request vetoes even with a clean-looking body', async () => {
+  const h = await run({ reviews: [{ ...copilotReview(81, HEAD, CLEAN_OVERVIEW), state: 'CHANGES_REQUESTED' }] });
+  assert.match(h.result.reason, /vetoed: Copilot's latest review \(81\) requests changes/);
+  assert.equal(h.calls.createReview.length, 0);
+});
+
+test('APPROVE-013: a dismissed Copilot review no longer stands', async () => {
+  const dismissed = { ...copilotReview(83, HEAD, FLAGGED_OVERVIEW, '2026-11-25T14:00:00Z'), state: 'DISMISSED' };
+  const h = await run({ reviews: [copilotReview(82, HEAD, CLEAN_OVERVIEW, '2026-11-25T13:00:00Z'), dismissed] });
+  assert.equal(h.result.decision, 'approved');
+  const required = await run({ policy: { require: { 'copilot-review': 'clean' } }, reviews: [{ ...dismissed, body: CLEAN_OVERVIEW }] });
+  assert.match(required.result.reason, /Copilot has not reviewed the PR yet/);
+});
+
+test('APPROVE-013: a flagged Copilot review that lands mid-run refuses before approving', async () => {
+  // Listing 1 is the veto stage; the review lands before the re-read.
+  const h = await run({ reviews: [ourApproval(84, HEAD)], lateReviews: [{ from: 2, review: copilotReview(85, HEAD, FLAGGED_OVERVIEW) }] });
+  assert.match(h.result.reason, /vetoed: Copilot's latest review \(85\)/);
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [84]);
+  assert.equal(h.calls.createReview.length, 0);
+});
+
+test('APPROVE-013: one that lands while approving withdraws the new approval', async () => {
+  // Listings: veto stage, the re-read before approving, the re-read after.
+  const h = await run({ lateReviews: [{ from: 3, review: copilotReview(86, HEAD, FLAGGED_OVERVIEW) }] });
+  assert.equal(h.calls.createReview.length, 1);
+  assert.match(h.result.reason, /vetoed: Copilot's latest review \(86\).* while approving; approval withdrawn/);
+  assert.equal(h.calls.dismissReview.length, 1);
+});
+
+test('APPROVE-013: a veto that throws withdraws our approval before the error surfaces', async () => {
+  const h = harness({ reviews: [ourApproval(87, HEAD)] });
+  const result = await decide({ github: h.github, context: h.context, core: h.core, env: h.env, kinds: h.kinds, merge: h.merge, vetoes: [async () => { throw httpError(500, 'veto down'); }] });
+  assert.equal(result.decision, 'skip');
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [87]);
+  assert.match(h.calls.dismissReview[0].message, /a veto could not be evaluated \(500 veto down\)/);
+  assert.equal(h.calls.createReview.length, 0);
+});
+
+test('APPROVE-013: a failed re-read of the reviews before approving withdraws, then surfaces', async () => {
+  // Listing 1 is the veto stage, 2 the re-read that fails, 3 the withdrawal.
+  const h = harness({ reviews: [ourApproval(88, HEAD)], listReviewsFailAt: [2] });
+  const result = await decide({ github: h.github, context: h.context, core: h.core, env: h.env, kinds: h.kinds, merge: h.merge });
+  assert.equal(result.decision, 'skip');
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [88]);
+  assert.match(h.calls.dismissReview[0].message, /Copilot's review could not be re-read \(502 bad gateway\)/);
+  assert.equal(h.calls.createReview.length, 0);
+});
+
+test('APPROVE-013: merge() gets the veto, and a hit there withdraws the approval on the head', async () => {
+  const vetoed = "vetoed: Copilot's latest review (89) has verdict 'x'";
+  const h = await run({ reviews: [ourApproval(90, HEAD)], policy: { merge: { enabled: true } }, mergeResult: { merged: false, reason: vetoed, vetoed: true } });
+  assert.equal(typeof h.mergeCalls[0].vetoBlocker, 'function');
+  assert.equal(await h.mergeCalls[0].vetoBlocker(), '');
+  assert.equal(h.result.decision, 'skip');
+  assert.match(h.result.reason, /vetoed: .* before merging; approval withdrawn/);
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [90]);
+});
+
+test('APPROVE-013: a veto error inside merge() withdraws, then surfaces', async () => {
+  const h = harness({ reviews: [ourApproval(91, HEAD)], policy: { merge: { enabled: true } }, mergeResult: { merged: false, reason: 'x', vetoError: httpError(502, 'bad gateway') } });
+  const result = await decide({ github: h.github, context: h.context, core: h.core, env: h.env, kinds: h.kinds, merge: h.merge });
+  assert.equal(result.decision, 'skip');
+  assert.deepEqual(h.calls.dismissReview.map((d) => d.review_id), [91]);
+});
+
 // --- dry run ----------------------------------------------------------------------
 
 test('dry-run decides and writes nothing', async () => {
@@ -506,7 +619,9 @@ test('dry-run decides and writes nothing', async () => {
   assert.equal(h.result.decision, 'dry-run');
   assert.equal(h.result.reason, '[release: APPROVE-006, MERGE-001] would approve and would merge: release 1.2.0');
   assertNoWrites(h);
-  assert.equal(h.calls.listReviews, 0);
+  // One read: the Copilot veto (APPROVE-013). Withdrawals, which also list
+  // reviews, are skipped in a dry run.
+  assert.equal(h.calls.listReviews, 1);
 });
 
 test('dry-run refusals write nothing either', async () => {

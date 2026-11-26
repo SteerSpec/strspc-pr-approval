@@ -64,7 +64,8 @@
             "max-files": { "type": "integer", "minimum": 0 },
             "max-additions": { "type": "integer", "minimum": 0 },
             "max-deletions": { "type": "integer", "minimum": 0 },
-            "no-labels": { "$ref": "#/$defs/strings" }
+            "no-labels": { "$ref": "#/$defs/strings" },
+            "copilot-review": { "enum": ["clean"], "description": "Refuse until Copilot has reviewed the head (APPROVE-013)" }
           }
         },
         "options": { "type": "object" },

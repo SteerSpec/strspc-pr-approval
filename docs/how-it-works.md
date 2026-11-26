@@ -17,7 +17,9 @@ serialized per PR. Every step is an API call; nothing from the PR is checked out
 7. **Checks**: none yet waits (unless `allow-no-checks`); a failing one refuses and withdraws; a
    running one waits for the next event (APPROVE-002).
 8. **Kind proof** (APPROVE-005..009). A refusal withdraws any approval of ours.
-9. **`require`** conditions (APPROVE-010) and **vetoes** (APPROVE-011; none ship in v1).
+9. **`require`** conditions (APPROVE-010) and **vetoes** (APPROVE-011). The one v1 veto is Copilot's
+   latest review: when Copilot has reviewed the PR, it refuses unless that review is an "Approval
+   recommended" overview with no open issue (APPROVE-013).
 10. **Re-read** head, base, title, draft and merge base; approve pinned to the head SHA; re-read
     again and withdraw if anything moved (APPROVE-003).
 11. **Merge**, only when the policy enables it (MERGE-001..005, [merging.md](merging.md)).
@@ -29,7 +31,8 @@ approval that could not be withdrawn fail the job.
 ## Living next to strspc-pr-review
 
 strspc-pr-review approves PRs once Copilot's review is clean. Copilot does not review PRs into
-`main`, and bot housekeeping PRs need no review, so those are this action's. To keep the two from
+`main`, and bot housekeeping PRs are proven by who wrote them and what they touch, so those are this
+action's; Copilot's review of a housekeeping PR can still veto it (below). To keep the two from
 acting on the same PR, give strspc-pr-review `exclude-heads`/`exclude-bases` matching the policies
 here (or keep its `base-branch` to `develop` and the bot heads out of it), and unset its deprecated
 `promotion-branches`, `release-branches` and `release-author`.
@@ -43,6 +46,26 @@ the check must also come from a GitHub Actions run of the `companion-workflow` f
 `merge_group`, so a CI job that happens to share the name is still waited for. The lookup needs
 `actions: read`; without it, the check counts as pending. strspc-pr-review must do the
 same for `strspc-pr-approval`, or its PRs stall on this job.
+
+## Copilot's review as a veto
+
+The kinds prove who wrote a PR and which files it touches, not what the change does. A template
+sync that replaces a repository's own `dependabot.yml` with a narrower one (this repo's #17) passes
+the template-sync proof, while Copilot flags it. So Copilot's latest review can refuse an approval,
+and take back one already given, but never grant one (APPROVE-013). The overview is read strictly: only
+the verdict "Approval recommended" with "No open issues" passes, and an unknown section, a
+previously missed issue, an errored review or a change request refuses. A dismissed review no longer
+stands and is skipped. The parser is the one strspc-pr-review uses by default. Reviews are listed
+again right before and right after the approval, so a review that lands mid-run still refuses.
+
+A PR Copilot never reviewed passes the veto. A policy that needs a review sets
+`require: { copilot-review: clean }`, which also refuses until Copilot has reviewed the head itself.
+The SteerSpec preset sets it on `sync-back`, `core-pin` and `template-sync`: they go into `develop`,
+where the org's ruleset has Copilot review every push.
+
+Copilot's review starts a `pull_request_review` run that GitHub holds at `action_required`, so
+nothing re-evaluates the PR when the review lands; the next push, label or check does. That stall
+is safe: the PR waits, it is never approved early.
 
 ## Why a policy file and a realm
 

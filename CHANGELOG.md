@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/SteerSpec/strspc-pr-approval/compare/v1.0.1...v1.1.0) (2026-11-26)
+
+
+### Features
+
+* let Copilot's latest review veto an approval ([#19](https://github.com/SteerSpec/strspc-pr-approval/issues/19)) ([29d9288](https://github.com/SteerSpec/strspc-pr-approval/commit/29d92883a257f43e7f57d64363b8a78a65c6f5f9))
+
 ## [1.0.1](https://github.com/SteerSpec/strspc-pr-approval/compare/v1.0.0...v1.0.1) (2026-11-16)
 
 

@@ -27,7 +27,9 @@ for the merge method that ruleset allows — the action already refuses to merge
 ## 2. The caller workflow
 
 Copy [`templates/pr-approval.yml`](../templates/pr-approval.yml) to `.github/workflows/pr-approval.yml`
-and list every workflow that gates PRs under `workflow_run.workflows`.
+and list every workflow that gates PRs under `workflow_run.workflows`. Its `schedule:` and
+`workflow_dispatch:` triggers start the hourly [sweep](how-it-works.md#the-sweep), the fallback for a
+PR whose own event never arrived; delete `schedule:` to keep only the manual run.
 
 ## 3. The policy
 

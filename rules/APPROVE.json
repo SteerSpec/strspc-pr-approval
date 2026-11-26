@@ -6,9 +6,9 @@
     "description": "When the action may approve a pull request, and when it must refuse or take an approval back."
   },
   "rule_set": {
-    "version": "0.1.19",
-    "timestamp": "2026-11-26T13:43:45Z",
-    "hash": "blake3:53f010ac5793bccab4261fec3adc3c4da368b03e8b50707ebd60bd34d5983ca2"
+    "version": "0.1.21",
+    "timestamp": "2026-11-26T17:36:51Z",
+    "hash": "blake3:23248a531f4ed7dc83de70f9493f7d612dda742091ff0a82a6a3353891ca0ff6"
   },
   "rules": [
     {
@@ -22,9 +22,9 @@
     },
     {
       "id": "APPROVE-002",
-      "revision": 2,
+      "revision": 3,
       "state": "D",
-      "body": "The action MUST NOT approve a pull request while any check on its head is unfinished or has concluded with anything other than success, neutral, skipped, cancelled or stale, ignoring only unfinished runs of its own job and unfinished strspc-pr-review auto-approve runs that GitHub Actions started from the configured companion workflow file for pull_request_target, pull_request_review, check_run or workflow_run, since both gate approval rather than test the code.",
+      "body": "The action MUST NOT approve a pull request while any check on its head is unfinished or has concluded with anything other than success, neutral, skipped, cancelled or stale, ignoring only unfinished runs of its own job, unfinished strspc-pr-review auto-approve runs that GitHub Actions started from the configured companion workflow file for pull_request_target, pull_request_review, check_run or workflow_run, and any run of either job that GitHub Actions started from its own workflow file for a schedule or a dispatch of the default branch, since these gate approval rather than test the code.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-09",
       "supersedes": null
@@ -124,6 +124,15 @@
       "revision": 0,
       "state": "D",
       "body": "The action MUST NOT approve a pull request whose latest Copilot review is anything other than an Approval recommended overview listing no open issue, or, when its policy sets require.copilot-review, before Copilot has reviewed its head.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-26",
+      "supersedes": null
+    },
+    {
+      "id": "APPROVE-014",
+      "revision": 0,
+      "state": "D",
+      "body": "On a schedule or a dispatch of the default branch, the action MUST evaluate the open pull requests the caller admits, most recently opened first and up to a stated limit, each under the same rules as a run started by an event of that pull request.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-26",
       "supersedes": null

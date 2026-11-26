@@ -85,6 +85,7 @@ function harness(o = {}) {
           Object.assign(cur, o.pr || {}, over || {});
           return { data: cur };
         },
+        list: async () => ({ data: o.openPrs || [basePr()] }),
         listReviews: async () => {
           calls.listReviews++;
           if (o.listReviewsError) throw o.listReviewsError;
@@ -159,6 +160,7 @@ function harness(o = {}) {
   const mergeCalls = [];
   const merge = async (args) => { mergeCalls.push(args); return o.mergeResult || { merged: true, method: 'squash' }; };
   const context = {
+    eventName: o.eventName || 'pull_request_target',
     repo: { owner: 'o', repo: 'r' },
     payload: o.payload || { pull_request: pr },
     runId: 99,
@@ -195,7 +197,7 @@ const assertNoWrites = (h) => {
 test('readConfig defaults', () => {
   assert.deepEqual(decide.readConfig({}), {
     botLogin: '', policyFile: decide.DEFAULT_POLICY_FILE, dryRun: false, allowNoChecks: false,
-    companionWorkflow: '.github/workflows/auto-approve.yml',
+    companionWorkflow: '.github/workflows/auto-approve.yml', selfWorkflow: '',
   });
   assert.equal(decide.readConfig({ PR_APPROVAL_COMPANION_WORKFLOW: '  ' }).companionWorkflow,
     '.github/workflows/auto-approve.yml');
@@ -205,7 +207,7 @@ test('readConfig defaults', () => {
   assert.deepEqual(decide.readConfig({
     PR_APPROVAL_BOT_LOGIN: ' b ', PR_APPROVAL_POLICY_FILE: 'x.yml', PR_APPROVAL_DRY_RUN: 'TRUE', PR_APPROVAL_ALLOW_NO_CHECKS: 'true',
   }), { botLogin: 'b', policyFile: 'x.yml', dryRun: true, allowNoChecks: true,
-    companionWorkflow: '.github/workflows/auto-approve.yml' });
+    companionWorkflow: '.github/workflows/auto-approve.yml', selfWorkflow: '' });
 });
 
 test('an empty bot-login fails the job', async () => {
@@ -839,4 +841,40 @@ test('markerBase fails closed on a missing or malformed marker', () => {
   assert.equal(markerBase({ body: '<!-- strspc-pr-approval base=%E0%A4%A -->' }), null);
   assert.equal(markerBase({ body: '<!-- strspc-pr-approval base=main --> trailing' }), null);
   assert.equal(markerBase({ body: '' }), null);
+});
+
+// --- the sweep (APPROVE-014) --------------------------------------------------
+
+test('APPROVE-014: a sweep approves a PR whose re-trigger never came (Copilot reviewed it after the last run)', async () => {
+  // #17's stall: the pull_request_review run Copilot's review starts is held,
+  // so only a sweep sees the clean review of the head.
+  const h = harness({
+    eventName: 'schedule',
+    payload: { repository: { default_branch: 'develop' } },
+    policy: { require: { 'copilot-review': 'clean' } },
+    reviews: [copilotReview(90, HEAD, CLEAN_OVERVIEW)],
+  });
+  const result = await decide({ github: h.github, context: h.context, core: h.core, env: h.env, kinds: h.kinds, merge: h.merge });
+  assert.equal(result.decision, 'approved');
+  assert.equal(h.calls.createReview.length, 1);
+  assert.equal(h.calls.createReview[0].commit_id, HEAD);
+  assert.ok(h.core.infos.some((m) => m.startsWith('pr-approval pr=5 decision=approved')));
+  assert.equal(h.core.outputs.decision, 'approved');
+  assert.equal(h.core.outputs.pr_number, '5');
+  assert.match(h.core.outputs.reason, /^sweep: #5 approved \(\[release: APPROVE-006, MERGE-001\] release 1\.2\.0\)$/);
+
+  // Without the review, the same sweep refuses under require.copilot-review.
+  const none = harness({ eventName: 'schedule', payload: {}, policy: { require: { 'copilot-review': 'clean' } } });
+  const refused = await decide({ github: none.github, context: none.context, core: none.core, env: none.env, kinds: none.kinds, merge: none.merge });
+  assert.equal(refused.decision, 'skip');
+  assert.ok(none.core.infos.some((m) => /pr=5 decision=skip reason=.*Copilot has not reviewed the PR yet/.test(m)));
+  assert.equal(none.calls.createReview.length, 0);
+});
+
+test('readConfig: selfWorkflow is the workflow path from GITHUB_WORKFLOW_REF', () => {
+  const at = (ref) => decide.readConfig({ GITHUB_WORKFLOW_REF: ref }).selfWorkflow;
+  assert.equal(at('SteerSpec/strspc-pr-approval/.github/workflows/pr-approval.yml@refs/heads/develop'), '.github/workflows/pr-approval.yml');
+  assert.equal(at('o/r/.github/workflows/a.yml'), '.github/workflows/a.yml');
+  assert.equal(at(''), '');
+  assert.equal(at('nonsense'), '');
 });

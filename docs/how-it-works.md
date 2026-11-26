@@ -3,7 +3,8 @@
 Back to the [README](../README.md).
 
 One run per event (`pull_request_target`, `pull_request_review`, `check_run`, `workflow_run`),
-serialized per PR. Every step is an API call; nothing from the PR is checked out or executed.
+serialized per PR, plus an hourly [sweep](#the-sweep) of the open PRs. Every step is an API call;
+nothing from the PR is checked out or executed.
 
 1. **Resolve the PR.** `check_run`/`workflow_run` carry none, so it is read from their associated PRs.
 2. **Universal guards** (APPROVE-001): open, not draft, head in this repository, not authored by the
@@ -43,7 +44,8 @@ its own; a finished one counts like any other check (APPROVE-002). A name alone 
 the check must also come from a GitHub Actions run of the `companion-workflow` file (default
 `.github/workflows/auto-approve.yml`) started by `pull_request_target`, `pull_request_review`,
 `check_run` or `workflow_run`. CI runs on `pull_request`, `push` or
-`merge_group`, so a CI job that happens to share the name is still waited for. The lookup needs
+`merge_group`, so a CI job that happens to share the name is still waited for. Both actions' sweeps
+are ignored too ([below](#the-sweep)). The lookup needs
 `actions: read`; without it, the check counts as pending. strspc-pr-review must do the
 same for `strspc-pr-approval`, or its PRs stall on this job.
 
@@ -64,8 +66,38 @@ The SteerSpec preset sets it on `sync-back`, `core-pin` and `template-sync`: the
 where the org's ruleset has Copilot review every push.
 
 Copilot's review starts a `pull_request_review` run that GitHub holds at `action_required`, so
-nothing re-evaluates the PR when the review lands; the next push, label or check does. That stall
-is safe: the PR waits, it is never approved early.
+no run of the PR's own re-evaluates it when the review lands. The [sweep](#the-sweep) does, within the
+hour, or the next push, label or check sooner. That wait is safe: the PR waits, it is never approved
+early.
+
+## The sweep
+
+Every rule above depends on an event of the PR starting a run, and GitHub does not always deliver
+one: the run Copilot's review starts is held, and CI's `workflow_run` can go missing. The template's
+`schedule:` (hourly, at minute 53) and `workflow_dispatch:` triggers start a sweep (APPROVE-014). It
+carries no PR, so the action lists the open PRs, most recently opened first, and evaluates each one
+that is not a draft and whose head is in this repository, exactly as a run of its own event would,
+policy and all. It differs in three ways:
+
+- It evaluates the 30 most recently opened such PRs at most, and warns when there are more.
+- Its outputs sum it up: `decision` is the most telling result (`error`, `merged`, `approved`,
+  `dry-run`, then `skip`), `reason` lists every PR that did not skip, and the other outputs describe
+  the PR behind `decision`. Each PR still logs its own `pr-approval pr=<n> decision=…` line.
+- It never cancels, and is never cancelled by, a PR's own run: sweeps share their own concurrency
+  group, `pr-approval-<repo>-sweep`. If a sweep and a PR's run judge the same head at once, the
+  worst case is a skipped merge ("already merged") or two approvals of that head.
+
+A sweep runs on the default branch's tip, which is also the head of a promotion from it. Its check
+there judged other PRs, so a run of this job, or of strspc-pr-review's `auto-approve`, from its own
+workflow file for a schedule or a dispatch of the default branch is ignored, finished or not
+(APPROVE-002). Otherwise one red sweep would refuse every promotion until the next tick. A dispatch
+of another branch runs that branch's copy of the file, so it counts like any check, and the
+template's job `if:` admits a dispatch of the default branch only.
+
+Cost: one short run per tick, about a minute billed on a private repository (some 720 minutes a
+month), and a dozen API calls per open PR. GitHub runs schedules from the default branch's copy of
+the workflow only, may start them late, and disables them in a public repository with no activity
+for 60 days. Delete `schedule:` to keep only the manual run: `gh workflow run pr-approval.yml`.
 
 ## Why a policy file and a realm
 

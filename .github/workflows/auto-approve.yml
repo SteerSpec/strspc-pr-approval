@@ -3,7 +3,7 @@ name: PR Auto-Approve (Copilot)
 # This IS the live workflow for this repo -- not a template to copy anywhere.
 #
 # Generated from templates/pr-auto-approve.yml in SteerSpec/strspc-pr-review
-# (v1.12.0) with only the per-repo values changed: secrets.BOT_TOKEN and the
+# (v1.12.2) with only the per-repo values changed: secrets.BOT_TOKEN and the
 # workflow_run list. Settings come from STRSPC_PR_AUTO_APPROVE_* variables, so
 # policy changes need no edit here; re-sync with the pr-caller-sync skill.
 #
@@ -114,7 +114,10 @@ jobs:
       # Reads the workflow run behind an unfinished strspc-pr-approval check, to
       # tell that job from CI of the same name (APPROVE-038).
       actions: read
-    # Serialize runs per PR to avoid race conditions.
+    # One group per PR, so a newer event run cancels an older one. That cancel is
+    # not atomic and a sweep has its own group, so two runs can still overlap on
+    # one PR; after approving, the action re-reads the PR and its checks and
+    # withdraws if the PR changed or a check failed (APPROVE-027, APPROVE-039).
     # For check_run events the PR number comes from check_run.pull_requests[0].number.
     # Sweeps share one group of their own and are never cancelled: a sweep stopped
     # halfway leaves the rest of its PRs for the next tick, and a sweep cannot
@@ -212,7 +215,7 @@ jobs:
       # Pinned to a commit SHA like every other action here: this step runs
       # with the org-wide BOT_TOKEN, so a moved tag must not change its code.
       # Bump the SHA and the version comment together when upgrading.
-      - uses: SteerSpec/strspc-pr-review@c936b0a461a0e86e7687f88a7f1e801e2759c240 # v1.12.0
+      - uses: SteerSpec/strspc-pr-review@394e1d5fc6f4ab39e284ffcfd13bfa87b38057b0 # v1.12.2
         with:
           # Required: GitHub login of the bot account that will approve PRs.
           # Keep this expression identical to the loop guard in the if: above.

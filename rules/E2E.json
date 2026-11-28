@@ -1,0 +1,52 @@
+{
+  "$schema": "./_schema/entity.v1.schema.json",
+  "entity": {
+    "id": "E2E",
+    "title": "End-to-end coverage",
+    "description": "What the e2e suite must cover, and how its harness is kept apart from the code under test."
+  },
+  "rule_set": {
+    "version": "0.1.4",
+    "timestamp": "2026-11-28T17:33:55Z",
+    "hash": "blake3:ab948fffc213ffdc3d9e4cc160feb9a9b6c3b13ceb1233299dec09d37a5abd07"
+  },
+  "rules": [
+    {
+      "id": "E2E-001",
+      "revision": 0,
+      "state": "D",
+      "body": "Every action.yml input and every APPROVE, POLICY and MERGE rule MUST have an e2e scenario or a stated exemption.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-28",
+      "supersedes": null
+    },
+    {
+      "id": "E2E-002",
+      "revision": 0,
+      "state": "D",
+      "body": "An e2e scenario MUST assert the decision and reason the action logged, not only the review it left or the absence of one.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-28",
+      "supersedes": null
+    },
+    {
+      "id": "E2E-003",
+      "revision": 0,
+      "state": "D",
+      "body": "The e2e harness, which holds the sandbox owner's token, MUST run only from the default branch of this repository.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-28",
+      "supersedes": null
+    },
+    {
+      "id": "E2E-004",
+      "revision": 0,
+      "state": "D",
+      "body": "The sandbox's caller MUST reference no secret other than the sandbox's own.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-28",
+      "supersedes": null
+    }
+  ],
+  "notes": []
+}

@@ -16,6 +16,9 @@ permissions:
 
 jobs:
   check:
+    # The default branch only: a dispatch of another branch would run that
+    # branch's copy of the script with E2E_ADMIN_TOKEN in its environment.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

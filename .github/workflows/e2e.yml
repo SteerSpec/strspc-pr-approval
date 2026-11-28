@@ -1,0 +1,67 @@
+name: E2E
+
+# Runs the scenarios in e2e/pr-approval against the sandbox in
+# testbed-multi-org, with the action pinned to the commit under test. It writes
+# to that sandbox only: it opens and closes PRs, merges into its develop, and
+# commits the caller, a CI stub and the policy to its main.
+#
+# Two kinds of code, kept apart:
+#   - the harness (e2e/pr-approval/*.sh) holds E2E_ADMIN_TOKEN, the enterprise
+#     owner's token. It always comes from the default branch: the job runs only
+#     on a dispatch of it, so no branch can change what runs with that token.
+#   - the action under test (input `sha`, any commit of this repo) runs IN the
+#     sandbox, through its caller, with the sandbox's own secrets
+#     (BOT_TOKEN_SANDBOX, the steerspec-sync-testbed App), never this token.
+# A branch's scenario changes are tested by running run.sh locally from it.
+#
+# One sandbox serves every run, so runs queue in the group below (GitHub keeps
+# one pending run and cancels an older pending one, which a manual trigger can
+# live with).
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full SHA of the commit to put under test (empty for the default branch's tip)
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-sandbox
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Configure this environment with a required reviewer and hold the token as
+    # its secret, so a run also needs the owner's go-ahead (bead wvi.2).
+    environment: e2e-sandbox
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve the commit under test
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          sha="${INPUT_SHA:-$GITHUB_SHA}"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha must be a full 40-character commit SHA"
+            exit 1
+          fi
+          echo "E2E_EXPECT_SHA=$sha" >>"$GITHUB_ENV"
+      - name: Put the commit under test
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ secrets.E2E_ADMIN_TOKEN }}
+        run: e2e/pr-approval/sandbox.sh sync "$E2E_EXPECT_SHA"
+      - name: Run the scenarios
+        timeout-minutes: 50
+        env:
+          GH_TOKEN: ${{ secrets.E2E_ADMIN_TOKEN }}
+        run: e2e/pr-approval/run.sh

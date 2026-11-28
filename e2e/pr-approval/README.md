@@ -1,12 +1,13 @@
 # e2e harness — pr-approval
 
 End-to-end tests for the action, run against a sandbox repository in the `testbed-multi-org`
-organization. Ported from strspc-pr-review's `e2e/pr-auto-approve`. The scenario suite is still to
-come (bead `strspc-pr-approval-3ns`); this directory holds the sandbox's setup and its token check.
+organization. Ported from strspc-pr-review's `e2e/pr-auto-approve`.
 
 | File | Role |
 |---|---|
-| `sandbox.sh` | Keeps the sandbox in a known shape, as code: `setup`, `check-tokens <sha>`, `status`. |
+| `scenarios.json` | **The suite.** Each scenario's expected decision, and the reason or review it must match. |
+| `run.sh` | Sets each scenario's scene, and asserts the outcome from the logged decision and the review GitHub holds. |
+| `sandbox.sh` | Keeps the sandbox in a known shape, as code: `setup`, `sync <sha>`, `reset`, `check-tokens <sha>`, `status`. |
 | `token-check.sh` | Checks the tokens a workflow was given, without printing them. |
 | `lib.sh` | Shared helpers. Sourced, not executed. |
 
@@ -47,3 +48,43 @@ and may review, and that the App token reaches the sandbox and may push. With no
 draft probe PR and closes it when done.
 
 The admin token in this repo is checked by the **Token check** workflow (Actions tab, run it by hand).
+
+`sync <sha>` puts a commit under test: it renders the caller from `templates/pr-approval.yml` at that
+SHA with `uses:` pinned to it and the secrets renamed to the sandbox's (it refuses if a production
+secret name survives), drops the hourly sweep, and commits a CI stub and the sandbox policy to `main`.
+The policy reads its realm at the same SHA:
+
+| Policy | Kind | What it admits |
+|---|---|---|
+| `promotion` | promotion | `develop` → `main`, every commit from an approved PR |
+| `e2e-change` | custom | the harness's PRs into `develop`: `e2e/**` heads by the admin, only `e2e/**` files, at most two |
+
+## Run
+
+```bash
+e2e/pr-approval/sandbox.sh sync "$(git rev-parse HEAD)"
+E2E_EXPECT_SHA="$(git rev-parse HEAD)" e2e/pr-approval/run.sh            # every scenario
+e2e/pr-approval/run.sh promotion-approved promotion-unapproved           # some
+```
+
+Or run the **E2E** workflow from the Actions tab, on the default branch, with the SHA to test (empty
+for the default branch's tip). The harness always runs the default branch's copy, because it holds
+the enterprise owner's token; only the action under test comes from the SHA, and it runs in the
+sandbox with the sandbox's secrets. To test a branch's scenario changes, run `run.sh` locally.
+
+Each scenario starts from `sandbox.sh reset`: no harness PRs open, `develop` back on `main`, dry-run
+off. `main` only moves forward (the enterprise Compliance ruleset forbids a force-push to the default
+branch), so the promotion scenarios close their promotion instead of merging it.
+
+A scenario asserts what the action decided, not just that no approval appeared: a crash, a wrong
+token and a skipped job all look like a refusal. It reads the line every evaluation logs,
+
+```
+pr-approval pr=42 decision=skip reason=[e2e-change: APPROVE-002] failing check: check (failure)
+```
+
+and, for an approval, the review's body. A failure is recorded and the run carries on; it ends with a
+pass/fail table, also written to `$GITHUB_STEP_SUMMARY`.
+
+The sandbox's rulesets dismiss an approval on a push, so `ci-fail-withdraws` proves the action's own
+withdrawal by failing CI on the **same** head: it retitles the approved PR with `[e2e-ci-fail]`.

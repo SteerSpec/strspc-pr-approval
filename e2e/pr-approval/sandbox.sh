@@ -6,6 +6,9 @@
 #
 #   sandbox.sh setup               one-time, as the enterprise owner: bot access,
 #                                  rulesets, a develop branch
+#   sandbox.sh sync <sha>          put the action at <sha> under test: the caller,
+#                                  a CI stub and the policy on main, develop on main
+#   sandbox.sh reset               close the harness's PRs, put develop back on main
 #   sandbox.sh check-tokens <sha>  run token-check.sh at <sha> inside the sandbox,
 #                                  against the secrets its caller will see
 #   sandbox.sh status              show the sandbox's branches, rulesets and secrets
@@ -18,8 +21,6 @@ SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
 ACTION_REPO="${ACTION_REPO:-SteerSpec/strspc-pr-approval}"
-BOT_LOGIN="${E2E_APPROVER_LOGIN:-cnslr-bt}"
-ADMIN_LOGIN="${E2E_ADMIN_LOGIN:-pleberre}"
 # The secrets the sandbox's caller reads. None is a production secret: the code
 # under test runs with them, and it can be any commit of this repo.
 #   BOT_TOKEN_SANDBOX    cnslr-bt's sandbox-only token (a testbed-multi-org secret)
@@ -184,6 +185,147 @@ check_tokens() {
   return "$rc"
 }
 
+# --- sync -------------------------------------------------------------------
+
+WORKFLOW=.github/workflows/pr-approval.yml
+CI=.github/workflows/ci.yml
+POLICY=.strspc/pr-approval.yml
+
+# The template at $1, pinned to $1, reading the sandbox's secrets. Fails if the
+# template no longer has the lines this rewrites, or if a production secret
+# name survives: the code under test must never be handed one.
+render_caller() { # sha
+  local out
+  out=$(raw "$ACTION_REPO" templates/pr-approval.yml "$1" | awk \
+    -v sha="$1" -v repo="$ACTION_REPO" \
+    -v bot="$BOT_SECRET_NAME" -v appid="$APP_ID_SECRET_NAME" -v appkey="$APP_KEY_SECRET_NAME" '
+    $0 == "      - uses: " repo "@v1" { print "      - uses: " repo "@" sha; used = 1; next }
+    # No hourly sweep: one landing mid-scenario would add a decision the scenario
+    # did not cause. A sweep scenario dispatches its own (workflow_dispatch).
+    $0 == "  schedule:" { unscheduled = 1; next }
+    unscheduled == 1 && /^    / { next }
+    { unscheduled = 0 }
+    /^ *[a-z-]+: \$\{\{ secrets\./ {
+      if (sub(/secrets\.PR_APPROVAL_BOT_TOKEN/, "secrets." bot)) b = 1
+      if (sub(/secrets\.STEERSPEC_APP_ID/, "secrets." appid)) i = 1
+      if (sub(/secrets\.STEERSPEC_PRIVATE_KEY/, "secrets." appkey)) k = 1
+    }
+    { print }
+    END { if (!used || !b || !i || !k) exit 1 }') || return 1
+  # Every secrets reference must be a sandbox secret (secret-guard.js parses
+  # the workflow; a line regex cannot tell a comment from a run: line).
+  node "$SCRIPT_DIR/secret-guard.js" "$BOT_SECRET_NAME" "$APP_ID_SECRET_NAME" "$APP_KEY_SECRET_NAME" GITHUB_TOKEN \
+    <<<"$out" || return 1
+  printf '%s\n' "$out"
+}
+
+ci_workflow() {
+  cat <<'EOF'
+name: CI
+
+# The caller's workflow_run trigger matches this workflow by NAME, so keep it
+# literally "CI". It only has to give the harness a check to wait for. edited:
+# ci-fail-withdraws retitles an approved PR to make this check fail on the same
+# head.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: sleep 10
+      # A title with this marker fails the check. Read from env, never
+      # interpolated: the title is PR-controlled.
+      - env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: '[[ "$TITLE" != *"[e2e-ci-fail]"* ]]'
+EOF
+}
+
+# The sandbox's policy. The realm is read at the commit under test, so its rule
+# IDs are the ones that commit cites.
+#   promotion   the preset's: develop -> main, every commit from an approved PR
+#   e2e-change  custom, for the harness's own PRs into develop: by the admin,
+#               only under e2e/, at most two files
+policy_file() { # sha
+  cat <<EOF
+# Managed by $ACTION_REPO e2e/pr-approval/sandbox.sh sync.
+version: 1
+realm: github://$ACTION_REPO@$1/rules
+policies:
+  - id: promotion
+    kind: promotion
+    rules: [APPROVE-005]
+    match: { head: develop, base: main }
+
+  - id: e2e-change
+    kind: custom
+    rules: [APPROVE-002]
+    match: { base: develop, head: 'e2e/**', authors: [$ADMIN_LOGIN] }
+    require: { paths: ['e2e/**'], max-files: 2 }
+EOF
+}
+
+sync() {
+  local sha="${1:?usage: sandbox.sh sync <sha>}" caller
+  require_gh "$ADMIN_LOGIN"
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "sync needs a full commit SHA, not '$sha'"
+  reset_prs
+  caller=$(render_caller "$sha") ||
+    fail "template at $sha lacks the expected uses:/secrets lines, or names a production secret"
+  put "$WORKFLOW" "$caller"
+  put "$CI" "$(ci_workflow)"
+  put "$POLICY" "$(policy_file "$sha")"
+  gh variable set STRSPC_PR_APPROVAL_BOT_LOGIN -R "$REPO" --body "$BOT_LOGIN"
+  reset_vars
+  reset_develop
+  ok "$REPO at $sha"
+}
+
+# --- reset ------------------------------------------------------------------
+
+# Only what the harness opens: e2e/ branches and promotions. Closes without
+# deleting branches, because a promotion's head is develop.
+reset_prs() {
+  local n
+  while read -r n; do
+    [[ -n "$n" ]] && gh pr close "$n" -R "$REPO" >/dev/null
+  done < <(gh pr list -R "$REPO" --state open --limit 100 --json number,headRefName --jq '.[]
+    | select(.headRefName == "develop" or (.headRefName | startswith("e2e/")))
+    | .number')
+  while read -r n; do
+    [[ -n "$n" ]] && gh api -X DELETE "repos/$REPO/git/refs/heads/$n" >/dev/null
+  done < <(gh api --paginate "repos/$REPO/git/matching-refs/heads/e2e/" --jq '.[].ref | ltrimstr("refs/heads/")')
+}
+
+# Every scenario starts with the switches off. Set, never deleted: a deleted
+# repo variable would let an org variable of the same name show through.
+reset_vars() {
+  local name
+  for name in DRY_RUN MERGE ALLOW_NO_CHECKS; do
+    gh variable set "STRSPC_PR_APPROVAL_$name" -R "$REPO" --body false
+  done
+}
+
+# main only moves forward: the enterprise Compliance ruleset forbids a
+# force-push to the default branch, even for its owner. develop can be
+# force-moved, so it is put back on main.
+reset_develop() {
+  local sha
+  sha=$(gh api "repos/$REPO/git/ref/heads/main" -q .object.sha)
+  if has_branch develop; then
+    gh api -X PATCH "repos/$REPO/git/refs/heads/develop" -f sha="$sha" -F force=true >/dev/null
+  else
+    gh api -X POST "repos/$REPO/git/refs" -f ref=refs/heads/develop -f sha="$sha" >/dev/null
+  fi
+}
+
 # --- status -----------------------------------------------------------------
 
 status() {
@@ -197,7 +339,9 @@ status() {
 
 case "${1:-}" in
   setup) setup ;;
+  sync) sync "${2:-}" ;;
+  reset) require_gh "$ADMIN_LOGIN"; reset_prs; reset_vars; reset_develop ;;
   check-tokens) check_tokens "${2:-}" ;;
   status) status ;;
-  *) fail "usage: $0 setup|check-tokens <sha>|status" ;;
+  *) fail "usage: $0 setup|sync <sha>|reset|check-tokens <sha>|status" ;;
 esac

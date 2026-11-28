@@ -93,3 +93,6 @@ jobs:
           fail_level: error
           # templates/ is linted because consumers copy it verbatim.
           actionlint_flags: '.github/workflows/*.yml templates/*.yml'
+      # The e2e harness scripts. shellcheck ships on ubuntu-latest.
+      - name: Run shellcheck
+        run: shellcheck -x e2e/pr-approval/*.sh

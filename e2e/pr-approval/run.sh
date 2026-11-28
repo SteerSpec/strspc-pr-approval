@@ -41,8 +41,9 @@ expect() { # pr, since
   decision=$(field "$SCENARIO" decision)
   case "$decision" in
     approved)
-      # From the review, not the log: the run that approves can be cancelled by
-      # the next one, and the review is what GitHub holds.
+      # Both halves: the decision says why, and the review is what GitHub holds.
+      # A later run that finds the approval standing logs "already approved: ".
+      wait_decision "$1" approved "$(field "$SCENARIO" reason)" "$2" || fail "$SCENARIO: wrong decision"
       wait_for_approval "$1" "$(field "$SCENARIO" review)" ||
         fail "$SCENARIO: no approval of #$1 matching /$(field "$SCENARIO" review)/"
       ;;

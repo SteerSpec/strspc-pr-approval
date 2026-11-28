@@ -67,7 +67,10 @@ E2E_EXPECT_SHA="$(git rev-parse HEAD)" e2e/pr-approval/run.sh            # every
 e2e/pr-approval/run.sh promotion-approved promotion-unapproved           # some
 ```
 
-Or run the **E2E** workflow from the Actions tab, which does both for the commit it runs on.
+Or run the **E2E** workflow from the Actions tab, on the default branch, with the SHA to test (empty
+for the default branch's tip). The harness always runs the default branch's copy, because it holds
+the enterprise owner's token; only the action under test comes from the SHA, and it runs in the
+sandbox with the sandbox's secrets. To test a branch's scenario changes, run `run.sh` locally.
 
 Each scenario starts from `sandbox.sh reset`: no harness PRs open, `develop` back on `main`, dry-run
 off. `main` only moves forward (the enterprise Compliance ruleset forbids a force-push to the default

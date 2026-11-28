@@ -212,15 +212,10 @@ render_caller() { # sha
     }
     { print }
     END { if (!used || !b || !i || !k) exit 1 }') || return 1
-  # Comments may name anything. On a live line, every `secrets` must be a dot
-  # reference to a sandbox secret: an allow-list, so another syntax for the
-  # same thing (secrets['NAME'], toJSON(secrets)) fails closed instead of
-  # slipping past a list of forbidden names.
-  local live all allowed
-  live=$(grep -vE '^[[:space:]]*#' <<<"$out")
-  all=$(grep -oE 'secrets' <<<"$live" | wc -l)
-  allowed=$(grep -oE "secrets\.($BOT_SECRET_NAME|$APP_ID_SECRET_NAME|$APP_KEY_SECRET_NAME|GITHUB_TOKEN)([^A-Za-z0-9_]|\$)" <<<"$live" | wc -l)
-  ((all == allowed)) || return 1
+  # Every secrets reference must be a sandbox secret (secret-guard.js parses
+  # the workflow; a line regex cannot tell a comment from a run: line).
+  node "$SCRIPT_DIR/secret-guard.js" "$BOT_SECRET_NAME" "$APP_ID_SECRET_NAME" "$APP_KEY_SECRET_NAME" GITHUB_TOKEN \
+    <<<"$out" || return 1
   printf '%s\n' "$out"
 }
 

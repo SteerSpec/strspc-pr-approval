@@ -44,6 +44,9 @@ shift
 WORKFLOW="${TOKEN_CHECK_WORKFLOW:-pr-approval.yml}"
 # A ref no branch or tag can have: git refuses '..' in a ref name.
 NO_REF="token-check..no-such-ref"
+# The Contents probe's branch, unique to this run, so a leftover from another
+# run cannot answer "Reference already exists" for it.
+PROBE_REF="token-check/probe-$$-$(date +%s)"
 ZERO_SHA=0000000000000000000000000000000000000000
 API="${GITHUB_API_URL:-https://api.github.com}"
 TMP=$(mktemp -d)
@@ -218,12 +221,12 @@ for spec in "$@"; do
   cont=""
   if [[ -n "$contents" ]]; then
     s=$(call "$value" POST "/repos/$REPO/git/refs" \
-      "$(jq -nc --arg z "$ZERO_SHA" '{ref: "refs/heads/token-check/probe", sha: $z}')")
+      "$(jq -nc --arg z "$ZERO_SHA" --arg r "refs/heads/$PROBE_REF" '{ref: $r, sha: $z}')")
     if [[ "$s" == 422 && "$(message)" == "Object does not exist" ]]; then
       cont="ok (branch at the zero SHA refused only for its object)"
     elif [[ "$s" == 201 ]]; then
       # Cannot happen for a missing object; if GitHub ever allows it, undo it.
-      call "$value" DELETE "/repos/$REPO/git/refs/heads/token-check/probe" >/dev/null
+      call "$value" DELETE "/repos/$REPO/git/refs/heads/$PROBE_REF" >/dev/null
       cont="ok, but GitHub created the probe branch (deleted)"
     else
       cont=$(refused "$s")

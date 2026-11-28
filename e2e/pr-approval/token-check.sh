@@ -75,6 +75,11 @@ header() { tr -d '\r' <"$TMP/headers" | awk -v h="$1" 'tolower($0) ~ "^" h ":" {
 message() { jq -r '.message // empty' "$TMP/body" 2>/dev/null | head -c 120; }
 refused() { echo "**$1** $(message); wanted: $(header x-accepted-github-permissions)"; }
 
+# GNU sha256sum on the runners, BSD shasum on macOS.
+sha256() {
+  if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi
+}
+
 kind() {
   case "$1" in
     github_pat_*) echo fine-grained ;;
@@ -102,7 +107,7 @@ for spec in "$@"; do
     failed=1
     continue
   fi
-  fp=$(printf %s "$value" | sha256sum | cut -c1-16)
+  fp=$(printf %s "$value" | sha256 | cut -c1-16)
   k=$(kind "$value")
   shape="$k, ${#value} chars"
   if [[ "$value" =~ [[:space:]] ]]; then

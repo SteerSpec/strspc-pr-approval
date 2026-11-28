@@ -1,5 +1,5 @@
 {
-  "comment": "The suite. run.sh sets each scene; this file states what the action must decide. 'reason' is a regex the logged reason must match; for an approval, 'review' is a regex its body must match too. Regexes are ERE, matched by Bash.",
+  "comment": "The suite. run.sh sets each scene; this file states what the action must decide. 'reason' is a regex the logged reason must match; for an approval or a merge, 'review' is a regex its body must match too; 'event', when set, is the only event whose runs count. Regexes are ERE, matched by Bash. 'inputs' and 'rules' are what each scenario proves; scripts/pr-approval/e2e.test.js fails when an action.yml input or a rule has neither a scenario nor an exemption here (E2E-001).",
   "scenarios": [
     {
       "name": "custom-approved",
@@ -7,8 +7,13 @@
       "decision": "approved",
       "reason": "^\\[e2e-change: APPROVE-002\\] (already approved: )?custom \\(policy conditions met\\)$",
       "review": "^Approved under policy `e2e-change` \\(APPROVE-002\\): custom \\(policy conditions met\\)",
+      "inputs": [
+        "bot-login",
+        "approve-token",
+        "github-token",
+        "policy-file"
+      ],
       "rules": [
-        "POLICY-001",
         "POLICY-007"
       ]
     },
@@ -17,6 +22,10 @@
       "summary": "A PR into main that is not a promotion matches no policy.",
       "decision": "skip",
       "reason": "^no policy matches this PR$",
+      "inputs": [
+        "bot-login",
+        "github-token"
+      ],
       "rules": [
         "POLICY-008"
       ]
@@ -26,8 +35,24 @@
       "summary": "A file outside the policy's paths refuses the PR.",
       "decision": "skip",
       "reason": "^\\[e2e-change: APPROVE-002\\] changes outside\\.txt, outside the allowed paths$",
+      "inputs": [
+        "bot-login",
+        "github-token"
+      ],
       "rules": [
-        "POLICY-006"
+        "POLICY-007"
+      ]
+    },
+    {
+      "name": "policy-from-base",
+      "summary": "A head that widens the policy to allow itself is still judged by the base's policy.",
+      "decision": "skip",
+      "reason": "^\\[e2e-change: APPROVE-002\\] changes \\.strspc/pr-approval\\.yml, outside the allowed paths$",
+      "inputs": [
+        "policy-file"
+      ],
+      "rules": [
+        "POLICY-001"
       ]
     },
     {
@@ -35,6 +60,10 @@
       "summary": "A failed check refuses the PR.",
       "decision": "skip",
       "reason": "^\\[e2e-change: APPROVE-002\\] failing check: check \\(failure\\)$",
+      "inputs": [
+        "bot-login",
+        "github-token"
+      ],
       "rules": [
         "APPROVE-002"
       ]
@@ -44,6 +73,9 @@
       "summary": "With dry-run on, the action reports what it would do and writes nothing.",
       "decision": "dry-run",
       "reason": "^\\[e2e-change: APPROVE-002\\] would approve: custom \\(policy conditions met\\)$",
+      "inputs": [
+        "dry-run"
+      ],
       "rules": []
     },
     {
@@ -51,18 +83,26 @@
       "summary": "A check that fails after the approval, on the same head, withdraws it.",
       "decision": "skip",
       "reason": "^\\[e2e-change: APPROVE-002\\] failing check: check \\(failure\\)$",
+      "inputs": [
+        "approve-token"
+      ],
       "rules": [
         "APPROVE-002"
       ]
     },
     {
       "name": "promotion-approved",
-      "summary": "A promotion whose every commit came from an approved PR is approved.",
+      "summary": "A promotion whose every commit came from an approved PR is approved, and not merged: its policy leaves merging off although the merge token is set.",
       "decision": "approved",
       "reason": "^\\[promotion: APPROVE-005\\] (already approved: )?promotion \\(develop to main, 1 commit\\(s\\) from 1 approved PR\\(s\\)\\)$",
       "review": "^Approved under policy `promotion` \\(APPROVE-005\\): promotion \\(develop to main, 1 commit\\(s\\) from 1 approved PR\\(s\\)\\)",
+      "inputs": [
+        "approve-token",
+        "merge-token"
+      ],
       "rules": [
-        "APPROVE-005"
+        "APPROVE-005",
+        "MERGE-001"
       ]
     },
     {
@@ -70,9 +110,67 @@
       "summary": "A promotion carrying a commit from a PR merged without approval is refused (the 0w3 case).",
       "decision": "skip",
       "reason": "^\\[promotion: APPROVE-005\\] commit [0-9a-f]{8} came from #[0-9]+, which has no standing approval$",
+      "inputs": [
+        "github-token"
+      ],
       "rules": [
         "APPROVE-005"
       ]
+    },
+    {
+      "name": "release-merged",
+      "summary": "A release-please PR is approved, then merged by the testbed App with a merge commit, and the merge starts a workflow on main.",
+      "decision": "merged",
+      "reason": "^\\[release: APPROVE-006, MERGE-002\\] release-pr \\(release-please--branches--main\\); merged \\(merge\\)$",
+      "review": "^Approved under policy `release` \\(APPROVE-006, MERGE-002\\): release-pr \\(release-please--branches--main\\)",
+      "inputs": [
+        "merge-token",
+        "approve-token"
+      ],
+      "rules": [
+        "APPROVE-006",
+        "MERGE-002",
+        "MERGE-004"
+      ]
+    },
+    {
+      "name": "sweep-approves",
+      "summary": "A PR its own events left unapproved is approved by a dispatch of the caller.",
+      "decision": "approved",
+      "event": "workflow_dispatch",
+      "reason": "^\\[e2e-change: APPROVE-002\\] custom \\(policy conditions met\\)$",
+      "review": "^Approved under policy `e2e-change` \\(APPROVE-002\\): custom \\(policy conditions met\\)",
+      "inputs": [
+        "bot-login"
+      ],
+      "rules": [
+        "APPROVE-014"
+      ]
     }
-  ]
+  ],
+  "exemptions": {
+    "policy-token": "The sandbox's policy extends nothing, so no remote policy file is fetched; resolving extends: with this token is covered by policy.test.js.",
+    "allow-no-checks": "Every sandbox PR has the CI stub's check, so the no-checks path never arises there; decide.test.js covers it both ways.",
+    "companion-workflow": "The sandbox runs no strspc-pr-review caller, so there is no companion run to ignore; decide.test.js covers the exemption."
+  },
+  "rule_exemptions": {
+    "APPROVE-001": "Forks, drafts and self-authored PRs are stopped by the caller's job if: or by the first guard; decide.test.js covers each, and a fork PR cannot be opened by the harness's single account.",
+    "APPROVE-003": "A change between the reads needs an edit timed inside one run; decide.test.js drives it with a fake API.",
+    "APPROVE-004": "The sandbox rulesets dismiss an approval on every push, so GitHub withdraws it before the action could; decide.test.js covers head and base changes.",
+    "APPROVE-007": "No sync-back scenario yet: it needs a release branch and release-please's files on both sides. kinds/sync-back.test.js covers it.",
+    "APPROVE-008": "No rules-pin scenario yet: the pin PRs come from steerspec-sync. kinds/pin.test.js covers it.",
+    "APPROVE-009": "No template-sync scenario yet: those PRs come from steerspec-sync with its label. kinds/template-sync.test.js covers it.",
+    "APPROVE-010": "A property of every kind's validation, not of one run; policy.test.js and decide.test.js try to relax the built-in conditions.",
+    "APPROVE-011": "The evaluator veto is not built yet (v1.1); there is nothing to run.",
+    "APPROVE-012": "Needs another account's approval for the action to leave alone; decide.test.js covers that only marked approvals of its own are withdrawn.",
+    "APPROVE-013": "The sandbox has no Copilot review; copilot.test.js and decide.test.js cover the veto.",
+    "APPROVE-015": "Needs a check to fail between the approval and the re-read inside one run; decide.test.js drives that interleaving.",
+    "POLICY-002": "The sandbox's policy extends nothing; policy.test.js refuses branch refs.",
+    "POLICY-003": "The sandbox's policy extends nothing; policy.test.js covers cycles and depth.",
+    "POLICY-004": "An invalid policy on the sandbox's base would break every other scenario run after it; policy.test.js covers the schema.",
+    "POLICY-005": "Checked when the policy loads, before any PR; policy.test.js covers it, and the sandbox's own policy cites a rule in each entry.",
+    "POLICY-006": "No two sandbox policies match the same PR; policy.test.js covers first-match order.",
+    "MERGE-003": "release-merged shows the clean path; a refusal needs the head to move or the state to change inside one run, which merge.test.js drives.",
+    "MERGE-005": "Needs a release PR while develop holds an unpromoted changelog-visible commit; kinds/release.test.js and merge.test.js cover it."
+  }
 }

@@ -96,6 +96,10 @@ BOT_LOGIN="${E2E_APPROVER_LOGIN:-cnslr-bt}"
 # shellcheck disable=SC2034  # used by run.sh and sandbox.sh
 ADMIN_LOGIN="${E2E_ADMIN_LOGIN:-pleberre}"
 CALLER_WORKFLOW="${E2E_CALLER_WORKFLOW:-pr-approval.yml}"
+# The App the sandbox's caller merges with (TESTBED_APP_ID), as GitHub names it
+# in merged_by and on the runs its merges start.
+# shellcheck disable=SC2034  # used by run.sh
+MERGE_APP_LOGIN="${E2E_MERGE_APP_LOGIN:-steerspec-sync-testbed[bot]}"
 TIMEOUT="${E2E_TIMEOUT:-300}"
 POLL_INTERVAL="${E2E_POLL_INTERVAL:-10}"
 
@@ -104,12 +108,12 @@ new_branch() { # scenario
 }
 
 # A branch off $1 with one commit adding $4, and a PR into $1. Prints the number.
-open_pr() { # base, branch, title, path
-  local base="$1" branch="$2" title="$3" path="$4" sha url
+open_pr() { # base, branch, title, path, [file content]
+  local base="$1" branch="$2" title="$3" path="$4" text="${5:-e2e run: $2}" sha url
   sha=$(gh api "repos/$REPO/git/ref/heads/$base" -q .object.sha)
   [[ -n "$sha" ]] || fail "could not read $base from $REPO"
   gh api -X POST "repos/$REPO/git/refs" -f ref="refs/heads/$branch" -f sha="$sha" >/dev/null
-  commit_file "$branch" "$path" "e2e run: $branch" "$title" >/dev/null
+  commit_file "$branch" "$path" "$text" "$title" >/dev/null
   url=$(gh pr create -R "$REPO" --base "$base" --head "$branch" --title "$title" \
     --body "e2e scenario PR, closed by the harness." 2>/dev/null | grep -E '/pull/[0-9]+$') ||
     fail "could not open a PR from $branch"
@@ -169,41 +173,64 @@ wait_withdrawn() { # pr
 # decided, from the line every evaluation logs:
 #
 #   pr-approval pr=<n> decision=<d> reason=<r>
+#   pr-approval sweep decision=<d> reason=<r>    (a sweep's own outcome)
 #
 # The pr= field is what ties a run to a PR: workflow_run events carry the
-# default branch, whichever PR they judged.
+# default branch, whichever PR they judged. "sweep" in place of a PR number
+# reads the sweep's line.
 
-# "<decision> <reason>" for each evaluation of the PR since $2, oldest first.
-# Returns 1 if anything could not be read, so empty output means "none".
-decision_lines() { # pr, since
-  local runs ids id file text
+# The name of the default branch's release-please PR branch for main.
+# shellcheck disable=SC2034  # used by run.sh
+RELEASE_BRANCH=release-please--branches--main
+
+# "<decision> <reason>" for each evaluation of the PR since $2, oldest first,
+# from runs of any event, or only of event $3. Returns 1 if anything could not
+# be read, so empty output means "none".
+decision_lines() { # pr|sweep, since, [event]
+  local runs ids id file text key
   runs=$(gh run list -R "$REPO" --workflow "$CALLER_WORKFLOW" --limit 40 \
-    --json databaseId,status,conclusion,createdAt 2>/dev/null) || return 1
-  ids=$(jq -r --arg s "$2" '[.[] | select(.status == "completed" and .createdAt >= $s
-      and (.conclusion == "success" or .conclusion == "failure"))]
+    --json databaseId,status,conclusion,createdAt,event 2>/dev/null) || return 1
+  ids=$(jq -r --arg s "$2" --arg e "${3:-}" '[.[] | select(.status == "completed" and .createdAt >= $s
+      and (.conclusion == "success" or .conclusion == "failure")
+      and ($e == "" or .event == $e))]
     | sort_by(.createdAt) | .[].databaseId' <<<"$runs") || return 1
+  key="pr=$1"
+  [[ "$1" == sweep ]] && key=sweep
   for id in $ids; do
     file="$LOG_DIR/$id.log"
     if [[ ! -e "$file" ]]; then
       text=$(gh run view "$id" -R "$REPO" --log 2>/dev/null) || return 1
-      grep -oE 'pr-approval pr=[0-9a-z]+ decision=.*' <<<"$text" >"$file" || true
+      grep -oE 'pr-approval (pr=[0-9a-z]+|sweep) decision=.*' <<<"$text" >"$file" || true
     fi
-    sed -nE "s/^pr-approval pr=$1 decision=([a-z-]+) reason=(.*)\$/\1 \2/p" "$file"
+    sed -nE "s/^pr-approval $key decision=([a-z-]+) reason=(.*)\$/\1 \2/p" "$file"
   done
 }
 
-# Polls until an evaluation since $4 decided $2 with a reason matching $3.
-wait_decision() { # pr, decision, reason regex, since
-  local deadline=$(($(date +%s) + TIMEOUT)) lines="" seen reason
+wait_decision() { # pr|sweep, decision, reason regex, since, [event]
+  local deadline=$(($(date +%s) + TIMEOUT)) lines="" seen reason who="PR #$1"
+  [[ "$1" == sweep ]] && who="the sweep"
   while (($(date +%s) < deadline)); do
-    lines=$(decision_lines "$1" "$4") || lines=""
+    lines=$(decision_lines "$1" "$4" "${5:-}") || lines=""
     while read -r seen reason; do
       [[ "$seen" == "$2" && "$reason" =~ $3 ]] && return 0
     done <<<"$lines"
     sleep "$POLL_INTERVAL"
   done
-  warn "PR #$1: no '$2' decision matching /$3/. Decisions seen:"
+  warn "$who: no '$2' decision matching /$3/${5:+ from a $5 run}. Decisions seen:"
   printf '%s\n' "${lines:-(none)}" >&2
+  return 1
+}
+
+# Waits until no run of the caller is queued or in progress, so a scenario can
+# change a variable without a run already under way reading the new value.
+wait_caller_idle() {
+  local deadline=$(($(date +%s) + TIMEOUT)) busy
+  while (($(date +%s) < deadline)); do
+    busy=$(gh run list -R "$REPO" --workflow "$CALLER_WORKFLOW" --limit 20 --json status \
+      --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null) || busy=1
+    [[ "$busy" == 0 ]] && return 0
+    sleep "$POLL_INTERVAL"
+  done
   return 1
 }
 
@@ -214,4 +241,18 @@ assert_pinned() {
   raw "$REPO" ".github/workflows/$CALLER_WORKFLOW" main |
     grep -q "strspc-pr-approval@$E2E_EXPECT_SHA\$" ||
     fail "the sandbox is not pinned to $E2E_EXPECT_SHA: another run changed it"
+}
+
+# Waits for a push run of the sandbox's Downstream workflow on commit $1 and
+# prints the login that started it. GitHub starts none for a merge made with
+# GITHUB_TOKEN, so the run itself is the proof.
+wait_downstream() { # sha
+  local deadline=$(($(date +%s) + TIMEOUT)) actor
+  while (($(date +%s) < deadline)); do
+    actor=$(gh api "repos/$REPO/actions/workflows/downstream.yml/runs?head_sha=$1&event=push" \
+      --jq '.workflow_runs[0].actor.login // empty' 2>/dev/null) || actor=""
+    [[ -n "$actor" ]] && { printf '%s\n' "$actor"; return 0; }
+    sleep "$POLL_INTERVAL"
+  done
+  return 1
 }

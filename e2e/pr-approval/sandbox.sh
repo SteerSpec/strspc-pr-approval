@@ -7,7 +7,8 @@
 #   sandbox.sh setup               one-time, as the enterprise owner: bot access,
 #                                  rulesets, a develop branch
 #   sandbox.sh sync <sha>          put the action at <sha> under test: the caller,
-#                                  a CI stub and the policy on main, develop on main
+#                                  a CI stub, a push stub, the release-please config
+#                                  and the policy on main, develop on main
 #   sandbox.sh reset               close the harness's PRs, put develop back on main
 #   sandbox.sh check-tokens <sha>  run token-check.sh at <sha> inside the sandbox,
 #                                  against the secrets its caller will see
@@ -189,6 +190,8 @@ check_tokens() {
 
 WORKFLOW=.github/workflows/pr-approval.yml
 CI=.github/workflows/ci.yml
+DOWNSTREAM=.github/workflows/downstream.yml
+RELEASE_CONFIG=release-please-config.json
 POLICY=.strspc/pr-approval.yml
 
 # The template at $1, pinned to $1, reading the sandbox's secrets. Fails if the
@@ -248,8 +251,41 @@ jobs:
 EOF
 }
 
+# What a merge into main starts. A merge made with GITHUB_TOKEN starts no
+# workflow, so a run of this on the merge commit proves the merge token was
+# used (MERGE-002), the way release-please's run after a promotion depends on.
+downstream_workflow() {
+  cat <<'EOF'
+name: Downstream
+
+# Stands in for release-please: release-merged waits for a run of this on the
+# merge commit.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  started:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "started by $GITHUB_ACTOR for $GITHUB_SHA"
+EOF
+}
+
+# The release kind reads this at the base to know which files release-please
+# owns: for a simple package, the manifest, CHANGELOG.md and version.txt.
+release_config() {
+  jq -n '{packages: {".": {"release-type": "simple"}}}'
+}
+
 # The sandbox's policy. The realm is read at the commit under test, so its rule
 # IDs are the ones that commit cites.
+#   release     release-please's PRs into main, written by the admin (its API
+#               commits are verified web-flow commits, as an App's are), merged
+#               by the testbed App
 #   promotion   the preset's: develop -> main, every commit from an approved PR
 #   e2e-change  custom, for the harness's own PRs into develop: by the admin,
 #               only under e2e/, at most two files
@@ -259,6 +295,12 @@ policy_file() { # sha
 version: 1
 realm: github://$ACTION_REPO@$1/rules
 policies:
+  - id: release
+    kind: release
+    rules: [APPROVE-006, MERGE-002]
+    options: { author: $ADMIN_LOGIN }
+    merge: { enabled: true }
+
   - id: promotion
     kind: promotion
     rules: [APPROVE-005]
@@ -281,6 +323,8 @@ sync() {
     fail "template at $sha lacks the expected uses:/secrets lines, or names a production secret"
   put "$WORKFLOW" "$caller"
   put "$CI" "$(ci_workflow)"
+  put "$DOWNSTREAM" "$(downstream_workflow)"
+  put "$RELEASE_CONFIG" "$(release_config)"
   put "$POLICY" "$(policy_file "$sha")"
   gh variable set STRSPC_PR_APPROVAL_BOT_LOGIN -R "$REPO" --body "$BOT_LOGIN"
   reset_vars
@@ -290,18 +334,23 @@ sync() {
 
 # --- reset ------------------------------------------------------------------
 
-# Only what the harness opens: e2e/ branches and promotions. Closes without
-# deleting branches, because a promotion's head is develop.
+# Only what the harness opens: e2e/ branches, release branches and promotions.
+# Closes PRs first, then deletes the e2e/ and release branches; develop stays,
+# because it is a promotion's head.
 reset_prs() {
   local n
   while read -r n; do
     [[ -n "$n" ]] && gh pr close "$n" -R "$REPO" >/dev/null
   done < <(gh pr list -R "$REPO" --state open --limit 100 --json number,headRefName --jq '.[]
-    | select(.headRefName == "develop" or (.headRefName | startswith("e2e/")))
+    | select(.headRefName == "develop" or (.headRefName | startswith("e2e/"))
+        or (.headRefName | startswith("release-please--")))
     | .number')
   while read -r n; do
     [[ -n "$n" ]] && gh api -X DELETE "repos/$REPO/git/refs/heads/$n" >/dev/null
-  done < <(gh api --paginate "repos/$REPO/git/matching-refs/heads/e2e/" --jq '.[].ref | ltrimstr("refs/heads/")')
+  done < <(
+    gh api --paginate "repos/$REPO/git/matching-refs/heads/e2e/" --jq '.[].ref | ltrimstr("refs/heads/")'
+    gh api --paginate "repos/$REPO/git/matching-refs/heads/release-please--" --jq '.[].ref | ltrimstr("refs/heads/")'
+  )
 }
 
 # Every scenario starts with the switches off. Set, never deleted: a deleted

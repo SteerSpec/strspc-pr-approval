@@ -119,7 +119,7 @@ Everything is API calls; the action never checks out PR code.
   when a policy enables it (MERGE-001..005).
 - `presets/steerspec.yml` — the SteerSpec org policy; consumers `extends:` it or write their own.
 - `templates/pr-approval.yml` — the caller workflow repos copy.
-- `rules/` — the `dev.steerspec.prapproval` realm (`POLICY`, `APPROVE`, `MERGE`). A behaviour
+- `rules/` — the `dev.steerspec.prapproval` realm (`POLICY`, `APPROVE`, `MERGE`, and `E2E` for the e2e suite). A behaviour
   change in the scripts goes with a rule change. Edit only through the `strspc` CLI, with a
   `chore(rules):` title.
 - `vendor/js-yaml/` — js-yaml 4.1.0 (MIT), vendored because a composite action has no install step.

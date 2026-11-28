@@ -35,20 +35,22 @@ field() { # scenario, field
 
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
-# Asserts what scenarios.json states for $SCENARIO on PR $1, since $2.
+# Asserts what scenarios.json states for $SCENARIO on PR $1, since $2. A
+# scenario's "event" names the only event whose runs count.
 expect() { # pr, since
-  local decision
+  local decision event
   decision=$(field "$SCENARIO" decision)
+  event=$(field "$SCENARIO" event)
   case "$decision" in
-    approved)
+    approved | merged)
       # Both halves: the decision says why, and the review is what GitHub holds.
       # A later run that finds the approval standing logs "already approved: ".
-      wait_decision "$1" approved "$(field "$SCENARIO" reason)" "$2" || fail "$SCENARIO: wrong decision"
+      wait_decision "$1" "$decision" "$(field "$SCENARIO" reason)" "$2" "$event" || fail "$SCENARIO: wrong decision"
       wait_for_approval "$1" "$(field "$SCENARIO" review)" ||
         fail "$SCENARIO: no approval of #$1 matching /$(field "$SCENARIO" review)/"
       ;;
     skip | dry-run)
-      wait_decision "$1" "$decision" "$(field "$SCENARIO" reason)" "$2" || fail "$SCENARIO: wrong decision"
+      wait_decision "$1" "$decision" "$(field "$SCENARIO" reason)" "$2" "$event" || fail "$SCENARIO: wrong decision"
       not_approved "$1" || fail "$SCENARIO: #$1 is approved after all"
       ;;
     *) fail "$SCENARIO: scenarios.json has no decision" ;;
@@ -126,15 +128,20 @@ sc_ci_fail_withdraws() {
 }
 
 # develop gains one commit from a PR the action approved; the promotion is
-# approved. It is closed, not merged: main only moves forward.
+# approved and left open, and the harness closes it.
 sc_promotion_approved() {
   local pr since promo
   pr=$(open_pr develop "$(new_branch "$SCENARIO")" "chore(e2e): $SCENARIO" "e2e/$SCENARIO.txt")
   wait_for_approval "$pr" "$CUSTOM_APPROVAL_RE" || fail "$SCENARIO: #$pr was never approved"
   merge_pr "$pr"
+  # MERGE-001: the caller now mints the merge token, and the promotion policy
+  # still does not merge.
+  gh variable set STRSPC_PR_APPROVAL_MERGE -R "$REPO" --body true
   since=$(now)
   promo=$(open_promotion)
   expect "$promo" "$since"
+  [[ "$(gh pr view "$promo" -R "$REPO" --json state -q .state)" == OPEN ]] ||
+    fail "$SCENARIO: promotion #$promo was merged or closed"
 }
 
 # develop gains one commit from a PR merged with the owner's bypass and no
@@ -146,6 +153,64 @@ sc_promotion_unapproved() {
   since=$(now)
   promo=$(open_promotion)
   expect "$promo" "$since"
+}
+
+# The head rewrites the policy so that it would allow itself; the base's policy
+# decides, and it refuses a change under .strspc/.
+sc_policy_from_base() {
+  local since pr policy
+  policy=$(raw "$REPO" .strspc/pr-approval.yml develop |
+    sed "s|require: { paths: \['e2e/\*\*'\]|require: { paths: ['e2e/**', '.strspc/**']|")
+  grep -qF "'.strspc/**'" <<<"$policy" || fail "$SCENARIO: could not widen the policy's paths"
+  since=$(now)
+  pr=$(open_pr develop "$(new_branch "$SCENARIO")" "chore(e2e): $SCENARIO" .strspc/pr-approval.yml "$policy")
+  expect "$pr" "$since"
+}
+
+# A release PR, opened as release-please would (its head branch, a bump of the
+# manifest), is approved and merged by the testbed App, and the merge starts a
+# workflow on main. Every run merges, so the version is main's plus one.
+sc_release_merged() {
+  local since pr manifest version next info merge_sha merged_by actor
+  gh variable set STRSPC_PR_APPROVAL_MERGE -R "$REPO" --body true
+  manifest=$(raw "$REPO" .release-please-manifest.json main 2>/dev/null) || manifest='{}'
+  version=$(jq -r '.["."] // "0.0.0"' <<<"$manifest" 2>/dev/null) || version=0.0.0
+  [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || fail "$SCENARIO: main's manifest holds '$version'"
+  next="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))"
+  since=$(now)
+  pr=$(open_pr main "$RELEASE_BRANCH" "chore(main): release $next" .release-please-manifest.json \
+    "$(jq -n --arg v "$next" '{".": $v}')")
+  expect "$pr" "$since"
+  info=$(gh api "repos/$REPO/pulls/$pr") || fail "$SCENARIO: could not read #$pr"
+  merge_sha=$(jq -r '.merge_commit_sha // empty' <<<"$info")
+  merged_by=$(jq -r '.merged_by.login // empty' <<<"$info")
+  [[ "$(jq -r .merged <<<"$info")" == true ]] || fail "$SCENARIO: #$pr is not merged"
+  [[ "$merged_by" == "$MERGE_APP_LOGIN" ]] || fail "$SCENARIO: #$pr was merged by '$merged_by', not $MERGE_APP_LOGIN"
+  # MERGE-004: main allows only merge commits, so the merge has two parents.
+  [[ "$(gh api "repos/$REPO/commits/$merge_sha" --jq '.parents | length')" == 2 ]] ||
+    fail "$SCENARIO: $merge_sha is not a merge commit"
+  actor=$(wait_downstream "$merge_sha") || fail "$SCENARIO: no Downstream run on $merge_sha"
+  [[ "$actor" == "$MERGE_APP_LOGIN" ]] || fail "$SCENARIO: Downstream on $merge_sha was started by '$actor'"
+}
+
+# The PR's own events only report what they would do (dry-run). With dry-run
+# off and nothing left to trigger a run, a dispatch of the caller is what
+# approves it.
+sc_sweep_approves() {
+  local since pr
+  gh variable set STRSPC_PR_APPROVAL_DRY_RUN -R "$REPO" --body true
+  since=$(now)
+  pr=$(open_pr develop "$(new_branch "$SCENARIO")" "chore(e2e): $SCENARIO" "e2e/$SCENARIO.txt")
+  wait_decision "$pr" dry-run "^\[e2e-change: APPROVE-002\] would approve: " "$since" ||
+    fail "$SCENARIO: #$pr's own events never reached the dry run"
+  wait_caller_idle || fail "$SCENARIO: the caller never went idle"
+  not_approved "$pr" || fail "$SCENARIO: #$pr is approved before the sweep"
+  gh variable set STRSPC_PR_APPROVAL_DRY_RUN -R "$REPO" --body false
+  since=$(now)
+  gh workflow run "$CALLER_WORKFLOW" -R "$REPO" --ref main >/dev/null || fail "$SCENARIO: could not dispatch the caller"
+  expect "$pr" "$since"
+  wait_decision sweep approved "^sweep: #$pr approved " "$since" workflow_dispatch ||
+    fail "$SCENARIO: the sweep did not report #$pr approved"
 }
 
 # --- run ------------------------------------------------------------------

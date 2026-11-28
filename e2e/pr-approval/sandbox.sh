@@ -123,6 +123,10 @@ jobs:
           private-key: \${{ secrets.$APP_KEY_SECRET_NAME }}
           owner: $owner
           repositories: $repo_name
+          # As the caller mints it: a token wider than the merge needs would pass
+          # here and hide a scope the caller lacks.
+          permission-contents: write
+          permission-pull-requests: write
       - env:
           $BOT_SECRET_NAME: \${{ secrets.$BOT_SECRET_NAME }}
           MERGE_TOKEN: \${{ steps.merge-token.outputs.token }}

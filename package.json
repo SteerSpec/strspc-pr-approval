@@ -10,7 +10,8 @@
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-exclude=\"**/*.test.js\" --test-coverage-exclude=\"vendor/**\" --test-coverage-lines=80 --test-coverage-branches=70 scripts/pr-approval/*.test.js scripts/pr-approval/kinds/*.test.js",
     "lint:workflows": "actionlint .github/workflows/*.yml templates/*.yml",
     "lint:rules": "strspc lint rules/",
-    "lint": "npm run lint:workflows && npm run lint:rules",
+    "lint:shell": "shellcheck -x e2e/pr-approval/*.sh",
+    "lint": "npm run lint:workflows && npm run lint:shell && npm run lint:rules",
     "prepare": "husky"
   },
   "dependencies": {},

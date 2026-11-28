@@ -1,0 +1,37 @@
+name: Token check
+
+# Reports whether this repo's e2e token is present, which token it is (a
+# SHA-256 fingerprint, never the value) and what it may do in the sandbox. Run
+# it after rotating the token, before an e2e run spends an hour finding out.
+#
+# This only sees THIS repo's copy. The sandbox's caller approves and merges with
+# the secrets visible to the sandbox repo, which only a workflow there can read:
+# `e2e/pr-approval/sandbox.sh check-tokens <sha>` runs the same script there.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # The default branch only: a dispatch of another branch would run that
+    # branch's copy of the script with E2E_ADMIN_TOKEN in its environment.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the token
+        env:
+          E2E_ADMIN_TOKEN: ${{ secrets.E2E_ADMIN_TOKEN }}
+          # A workflow that sandbox.sh check-tokens puts in the sandbox, so the
+          # Actions probe has one to dispatch.
+          TOKEN_CHECK_WORKFLOW: token-check.yml
+        # The admin token is the enterprise owner's: the harness commits to the
+        # sandbox's main, opens the PRs and dispatches the sweep.
+        run: >-
+          e2e/pr-approval/token-check.sh testbed-multi-org/strspc-pr-approval-sandbox
+          E2E_ADMIN_TOKEN@pleberre+actions+contents

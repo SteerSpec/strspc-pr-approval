@@ -304,9 +304,13 @@ reset_prs() {
   done < <(gh api --paginate "repos/$REPO/git/matching-refs/heads/e2e/" --jq '.[].ref | ltrimstr("refs/heads/")')
 }
 
-# A scenario may switch dry-run on; every scenario starts with it off.
+# Every scenario starts with the switches off. Set, never deleted: a deleted
+# repo variable would let an org variable of the same name show through.
 reset_vars() {
-  gh variable delete STRSPC_PR_APPROVAL_DRY_RUN -R "$REPO" 2>/dev/null || true
+  local name
+  for name in DRY_RUN MERGE ALLOW_NO_CHECKS; do
+    gh variable set "STRSPC_PR_APPROVAL_$name" -R "$REPO" --body false
+  done
 }
 
 # main only moves forward: the enterprise Compliance ruleset forbids a

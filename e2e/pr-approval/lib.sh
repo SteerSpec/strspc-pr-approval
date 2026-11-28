@@ -87,3 +87,131 @@ raw() { # repo, path, ref
 }
 
 has_branch() { gh api "repos/$REPO/branches/$1" >/dev/null 2>&1; }
+
+# --- PRs ------------------------------------------------------------------
+#
+# Scenario state, set by run.sh: the identities, the caller workflow, the poll
+# interval and timeout, and LOG_DIR where finished runs' decision lines are kept.
+BOT_LOGIN="${E2E_APPROVER_LOGIN:-cnslr-bt}"
+# shellcheck disable=SC2034  # used by run.sh and sandbox.sh
+ADMIN_LOGIN="${E2E_ADMIN_LOGIN:-pleberre}"
+CALLER_WORKFLOW="${E2E_CALLER_WORKFLOW:-pr-approval.yml}"
+TIMEOUT="${E2E_TIMEOUT:-300}"
+POLL_INTERVAL="${E2E_POLL_INTERVAL:-10}"
+
+new_branch() { # scenario
+  printf 'e2e/%s-%s' "$1" "$(date -u +%Y%m%d-%H%M%S)"
+}
+
+# A branch off $1 with one commit adding $4, and a PR into $1. Prints the number.
+open_pr() { # base, branch, title, path
+  local base="$1" branch="$2" title="$3" path="$4" sha url
+  sha=$(gh api "repos/$REPO/git/ref/heads/$base" -q .object.sha)
+  [[ -n "$sha" ]] || fail "could not read $base from $REPO"
+  gh api -X POST "repos/$REPO/git/refs" -f ref="refs/heads/$branch" -f sha="$sha" >/dev/null
+  commit_file "$branch" "$path" "e2e run: $branch" "$title" >/dev/null
+  url=$(gh pr create -R "$REPO" --base "$base" --head "$branch" --title "$title" \
+    --body "e2e scenario PR, closed by the harness." 2>/dev/null | grep -E '/pull/[0-9]+$') ||
+    fail "could not open a PR from $branch"
+  printf '%s\n' "${url##*/}"
+}
+
+# Exit codes: 0 an approval of ours whose body matches $2 stands, 1 none, 2 the
+# reviews could not be read.
+has_bot_approval() { # pr, body regex
+  local reviews
+  reviews=$(gh api "repos/$REPO/pulls/$1/reviews?per_page=100" 2>/dev/null) || return 2
+  jq -e --arg login "$BOT_LOGIN" --arg re "${2:-}" \
+    'any(.[]; .user.login == $login and .state == "APPROVED" and ((.body // "") | test($re)))' \
+    <<<"$reviews" >/dev/null
+}
+
+wait_for_approval() { # pr, body regex
+  local deadline=$(($(date +%s) + TIMEOUT))
+  while (($(date +%s) < deadline)); do
+    has_bot_approval "$1" "${2:-}" && return 0
+    sleep "$POLL_INTERVAL"
+  done
+  return 1
+}
+
+# No approval of ours stands, read without an API error.
+not_approved() { # pr
+  local rc=0 attempt
+  for attempt in 1 2 3; do
+    rc=0
+    has_bot_approval "$1" || rc=$?
+    ((rc != 2)) && break
+    sleep "$POLL_INTERVAL"
+  done
+  ((rc == 1))
+}
+
+# An approval of ours was dismissed, and none stands.
+wait_withdrawn() { # pr
+  local deadline=$(($(date +%s) + TIMEOUT)) reviews
+  while (($(date +%s) < deadline)); do
+    if reviews=$(gh api "repos/$REPO/pulls/$1/reviews?per_page=100" 2>/dev/null) &&
+      jq -e --arg login "$BOT_LOGIN" '
+        any(.[]; .user.login == $login and .state == "DISMISSED") and
+        (any(.[]; .user.login == $login and .state == "APPROVED") | not)' <<<"$reviews" >/dev/null; then
+      return 0
+    fi
+    sleep "$POLL_INTERVAL"
+  done
+  return 1
+}
+
+# --- Decisions -----------------------------------------------------------
+#
+# A missing approval proves nothing: a crash, a wrong token and a skipped job
+# all look like a correct refusal. So a scenario asserts what the action
+# decided, from the line every evaluation logs:
+#
+#   pr-approval pr=<n> decision=<d> reason=<r>
+#
+# The pr= field is what ties a run to a PR: workflow_run events carry the
+# default branch, whichever PR they judged.
+
+# "<decision> <reason>" for each evaluation of the PR since $2, oldest first.
+# Returns 1 if anything could not be read, so empty output means "none".
+decision_lines() { # pr, since
+  local runs ids id file text
+  runs=$(gh run list -R "$REPO" --workflow "$CALLER_WORKFLOW" --limit 40 \
+    --json databaseId,status,conclusion,createdAt 2>/dev/null) || return 1
+  ids=$(jq -r --arg s "$2" '[.[] | select(.status == "completed" and .createdAt >= $s
+      and (.conclusion == "success" or .conclusion == "failure"))]
+    | sort_by(.createdAt) | .[].databaseId' <<<"$runs") || return 1
+  for id in $ids; do
+    file="$LOG_DIR/$id.log"
+    if [[ ! -e "$file" ]]; then
+      text=$(gh run view "$id" -R "$REPO" --log 2>/dev/null) || return 1
+      grep -oE 'pr-approval pr=[0-9a-z]+ decision=.*' <<<"$text" >"$file" || true
+    fi
+    sed -nE "s/^pr-approval pr=$1 decision=([a-z-]+) reason=(.*)\$/\1 \2/p" "$file"
+  done
+}
+
+# Polls until an evaluation since $4 decided $2 with a reason matching $3.
+wait_decision() { # pr, decision, reason regex, since
+  local deadline=$(($(date +%s) + TIMEOUT)) lines="" seen reason
+  while (($(date +%s) < deadline)); do
+    lines=$(decision_lines "$1" "$4") || lines=""
+    while read -r seen reason; do
+      [[ "$seen" == "$2" && "$reason" =~ $3 ]] && return 0
+    done <<<"$lines"
+    sleep "$POLL_INTERVAL"
+  done
+  warn "PR #$1: no '$2' decision matching /$3/. Decisions seen:"
+  printf '%s\n' "${lines:-(none)}" >&2
+  return 1
+}
+
+# Fails unless the sandbox's caller still runs the commit under test: a run
+# sharing the sandbox would otherwise test someone else's commit.
+assert_pinned() {
+  [[ -n "${E2E_EXPECT_SHA:-}" ]] || return 0
+  raw "$REPO" ".github/workflows/$CALLER_WORKFLOW" main |
+    grep -q "strspc-pr-approval@$E2E_EXPECT_SHA\$" ||
+    fail "the sandbox is not pinned to $E2E_EXPECT_SHA: another run changed it"
+}

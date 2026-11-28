@@ -1,0 +1,76 @@
+{
+  "comment": "The suite. run.sh sets each scene; this file states what the action must decide. 'review' is a regex the approval's body must match; 'reason' a regex the logged reason must match. Regexes are ERE, matched by Bash.",
+  "scenarios": [
+    {
+      "name": "custom-approved",
+      "summary": "A harness PR into develop that meets the custom policy is approved.",
+      "decision": "approved",
+      "review": "^Approved under policy `e2e-change` \\(APPROVE-002\\): custom \\(policy conditions met\\)",
+      "rules": [
+        "POLICY-001",
+        "POLICY-007"
+      ]
+    },
+    {
+      "name": "no-policy",
+      "summary": "A PR into main that is not a promotion matches no policy.",
+      "decision": "skip",
+      "reason": "^no policy matches this PR$",
+      "rules": [
+        "POLICY-008"
+      ]
+    },
+    {
+      "name": "outside-paths",
+      "summary": "A file outside the policy's paths refuses the PR.",
+      "decision": "skip",
+      "reason": "^\\[e2e-change: APPROVE-002\\] changes outside\\.txt, outside the allowed paths$",
+      "rules": [
+        "POLICY-006"
+      ]
+    },
+    {
+      "name": "ci-failing",
+      "summary": "A failed check refuses the PR.",
+      "decision": "skip",
+      "reason": "^\\[e2e-change: APPROVE-002\\] failing check: check \\(failure\\)$",
+      "rules": [
+        "APPROVE-002"
+      ]
+    },
+    {
+      "name": "dry-run",
+      "summary": "With dry-run on, the action reports what it would do and writes nothing.",
+      "decision": "dry-run",
+      "reason": "^\\[e2e-change: APPROVE-002\\] would approve: custom \\(policy conditions met\\)$",
+      "rules": []
+    },
+    {
+      "name": "ci-fail-withdraws",
+      "summary": "A check that fails after the approval, on the same head, withdraws it.",
+      "decision": "skip",
+      "reason": "^\\[e2e-change: APPROVE-002\\] failing check: check \\(failure\\)$",
+      "rules": [
+        "APPROVE-002"
+      ]
+    },
+    {
+      "name": "promotion-approved",
+      "summary": "A promotion whose every commit came from an approved PR is approved.",
+      "decision": "approved",
+      "review": "^Approved under policy `promotion` \\(APPROVE-005\\): promotion \\(develop to main, 1 commit\\(s\\) from 1 approved PR\\(s\\)\\)",
+      "rules": [
+        "APPROVE-005"
+      ]
+    },
+    {
+      "name": "promotion-unapproved",
+      "summary": "A promotion carrying a commit from a PR merged without approval is refused (the 0w3 case).",
+      "decision": "skip",
+      "reason": "^\\[promotion: APPROVE-005\\] commit [0-9a-f]{8} came from #[0-9]+, which has no standing approval$",
+      "rules": [
+        "APPROVE-005"
+      ]
+    }
+  ]
+}
